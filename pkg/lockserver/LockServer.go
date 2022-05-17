@@ -22,21 +22,7 @@ type LockRequest struct {
 type LockServer struct {
 	// key -> list of array clientIds
 	addr string
-
-	readLockStatusLock sync.Mutex
-	readLockStatus  map[string][]string
-
-	// key -> list of array clientIds
-	writeLocksStatusLock sync.Mutex
-	writeLocksStatus map[string]string
-
-	// key -> []LockRequest
-	requestQueueMapLock sync.Mutex
-	requestsQueueMap map[string][]LockRequest
-	UnimplementedLockServiceServer
-
-	waitersLock sync.Mutex
-	waiters map[string]chan bool
+	lm *LockManager
 }
 
 func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) (*Success, error) {
@@ -63,13 +49,13 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 		}
 		ls.processAcquireRequest(request)
 
-		ls.waitersLock.Lock()
-		waiter, ok := ls.waiters[key]
+		ls.lm.waitersLock.Lock()
+		waiter, ok := ls.lm.waiters[key]
 		if !ok {
 			waiter = make(chan bool)
-			ls.waiters[key] = waiter
+			ls.lm.waiters[key] = waiter
 		}
-		ls.waitersLock.Unlock()
+		ls.lm.waitersLock.Unlock()
 		<- waiter
 	}
 
@@ -81,29 +67,27 @@ func (ls *LockServer) processAcquireRequest(request LockRequest) {
 	rwflag := request.rwflag
 	clientId := request.clientId
 
-	ls.requestQueueMapLock.Lock()
-	ls.requestsQueueMap[key] = append(ls.requestsQueueMap[key], request)
-	ls.requestQueueMapLock.Unlock()
+	ls.lm.requestQueueMapLock.Lock()
+	ls.lm.requestsQueueMap[key] = append(ls.lm.requestsQueueMap[key], request)
+	ls.lm.requestQueueMapLock.Unlock()
 
-	ls.readLockStatusLock.Lock()
-	_, readOwnedByOtherClient := ls.readLockStatus[key]
-	ls.readLockStatusLock.Unlock()
+	ls.lm.readLockStatusLock.Lock()
+	_, readOwnedByOtherClient := ls.lm.readLockStatus[key]
+	ls.lm.readLockStatusLock.Unlock()
 
-	ls.writeLocksStatusLock.Lock()
-	_, writeOwnedByOtherClient := ls.writeLocksStatus[key]
-	ls.writeLocksStatusLock.Unlock()
+	ls.lm.writeLocksStatusLock.Lock()
+	_, writeOwnedByOtherClient := ls.lm.writeLocksStatus[key]
+	ls.lm.writeLocksStatusLock.Unlock()
 
 	if readOwnedByOtherClient && writeOwnedByOtherClient {
-		panicStr, _ := fmt.Printf("server [%d] has both read and write at one time for key %s\n", ls.addr, key)
+		panicStr, _ := fmt.Printf("server [%s] has both read and write at one time for key %s\n", ls.addr, key)
 		panic(panicStr)
 	}
 
 	if readOwnedByOtherClient {
 
-	}
-
-	if writeOwnedByOtherClient {
-
+	} else if writeOwnedByOtherClient {
+		// ls.openValve()
 	}
 }
 
@@ -112,17 +96,15 @@ func (ls *LockServer) Release(ctx context.Context, locksInfo *ReleaseLocksInfo) 
 	return &Success{Flag: true}, nil
 }
 
-//func (ls *LockServer) openValve() {
-//
-//	return &Success{Flag: true}, nil
-//}
+func (ls *LockServer) openValve(key string) {
+
+}
 
 var _ LockServerInterface = new(LockServer)
 
-func NewLockServer(addr string) *LockServer {
+func NewLockServer(addr string, lockManager *LockManager) *LockServer {
 	return &LockServer{
 		addr: addr,
-		readLockStatus:  make(map[string][]string),
-		writeLocksStatus: make(map[string]string),
+		lm: lockManager,
 	}
 }
