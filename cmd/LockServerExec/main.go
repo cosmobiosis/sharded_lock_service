@@ -44,7 +44,8 @@ func startServer(hostAddr string, shutChan chan bool) error {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	server := grpc.NewServer()
-	lockServer := lockserver.NewLockServer()
+	lockManager := lockserver.NewLockManager()
+	lockServer := lockserver.NewLockServer(hostAddr, lockManager)
 	lockserver.RegisterLockServiceServer(server, lockServer)
 
 	go func() {
