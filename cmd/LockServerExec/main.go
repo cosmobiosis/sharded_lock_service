@@ -1,11 +1,8 @@
 package main
 
 import (
+	"flag"
 	"sharded_lock_service/pkg/lockserver"
-	"errors"
-	"google.golang.org/grpc"
-	"log"
-	"net"
 	"strconv"
 
 	// "io/ioutil"
@@ -18,17 +15,18 @@ import (
 
 func main() {
 	// Custom flag Usage message
-	NUM_SERVERS := 10
-	START_ADDR := 1000
-	var shutdownChannels []chan bool
 	setupErrDetected := make(chan bool)
 
-	for i := 1; i < NUM_SERVERS; i++ {
-		serverAddr := strconv.Itoa(START_ADDR + i)
+	numServers := flag.Int("numServers", 10, "number of total servers to set up")
+	startPort := flag.Int("startPort", 1000, "starting address of servers")
+	// Parse the flags.
+	flag.Parse()
+
+	for i := 1; i < *numServers; i++ {
+		serverAddr := ":" + strconv.Itoa(*startPort + i)
 		var shutChan chan bool
-		shutdownChannels = append(shutdownChannels, shutChan)
 		go func() {
-			err := startServer(serverAddr, shutChan)
+			err := lockserver.StartServer(serverAddr, shutChan)
 			if err != nil {
 				setupErrDetected <- true
 			}
@@ -36,25 +34,4 @@ func main() {
 	}
 	<- setupErrDetected
 	panic("Lock Servers Set Up Error Detected")
-}
-
-func startServer(hostAddr string, shutChan chan bool) error {
-	lis, err := net.Listen("tcp", hostAddr)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	server := grpc.NewServer()
-	lockManager := lockserver.NewLockManager()
-	lockServer := lockserver.NewLockServer(hostAddr, lockManager)
-	lockserver.RegisterLockServiceServer(server, lockServer)
-
-	go func() {
-		<- shutChan
-		server.Stop()
-	}()
-
-	if errServe := server.Serve(lis); errServe != nil {
-		return errors.New("fail to serve")
-	}
-	return nil
 }

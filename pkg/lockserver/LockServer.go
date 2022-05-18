@@ -2,7 +2,11 @@ package lockserver
 
 import (
 	context "context"
+	"errors"
 	"fmt"
+	"google.golang.org/grpc"
+	"log"
+	"net"
 	"sort"
 )
 
@@ -221,4 +225,26 @@ func NewLockServer(addr string, lockManager *LockManager) *LockServer {
 		addr: addr,
 		lm: lockManager,
 	}
+}
+
+func StartServer(hostAddr string, shutChan chan bool) error {
+	lis, err := net.Listen("tcp", hostAddr)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	server := grpc.NewServer()
+	lockManager := NewLockManager()
+	lockServer := NewLockServer(hostAddr, lockManager)
+	RegisterLockServiceServer(server, lockServer)
+
+	go func() {
+		<- shutChan
+		server.Stop()
+	}()
+
+	fmt.Println("Setting up server", hostAddr)
+	if errServe := server.Serve(lis); errServe != nil {
+		return errors.New("fail to serve")
+	}
+	return nil
 }
