@@ -1,9 +1,10 @@
 package lockserver
 
 import (
+	"github.com/robfig/cron/v3"
+	"sharded_lock_service/pkg/utils"
 	"sort"
 	"time"
-	"github.com/robfig/cron/v3"
 )
 
 type LeaseManager struct {
@@ -25,7 +26,7 @@ func (leaseM *LeaseManager) Release(clientId string) error {
 	leaseM.lm.clientLocksMu.Unlock()
 
 	sort.Strings(keysToRelease)
-	reverse(keysToRelease)
+	utils.reverse(keysToRelease)
 
 	for _, key := range keysToRelease {
 		request := LockRequest{
@@ -44,7 +45,7 @@ func (leaseM *LeaseManager) CleanExpireLocks() {
 	leaseM.lm.clientLeaseMu.Lock()
 	ExpireSet := make(map[string]int64)
 	for clientId, lease := range leaseM.lm.clientLease {
-		if lease + EXPIRATION_SECS < curTime {
+		if lease +utils.EXPIRATION_SECS < curTime {
 			ExpireSet[clientId] = lease
 		}
 	}

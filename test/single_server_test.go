@@ -10,11 +10,7 @@ import (
 )
 
 func TestBasicReadAcquire(t *testing.T) {
-	shutChan := make(chan bool)
-	err := lockserver.StartServer(":8080", shutChan)
-	if err != nil {
-		panic(err)
-	}
-	
-	shutChan <- true
+	testingInfo := InitTest(1, 1000)
+
+	testingInfo.ShutdownChannels[0] <- true
 }

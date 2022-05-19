@@ -1,6 +1,6 @@
-package lockserver
+package utils
 
-func contains(slice []string, item string) bool {
+func SliceContains(slice []string, item string) bool {
 	set := make(map[string]struct{}, len(slice))
 	for _, s := range slice {
 		set[s] = struct{}{}
@@ -10,7 +10,7 @@ func contains(slice []string, item string) bool {
 	return ok
 }
 
-func reverse(slice []string) {
+func SliceReverse(slice []string) {
 	for i, j := 0, len(slice) - 1; i < j; i, j = i + 1, j - 1 {
 		temp := slice[j]
 		slice[j] = slice[i]
@@ -18,7 +18,7 @@ func reverse(slice []string) {
 	}
 }
 
-func remove(slice []string, item string) []string {
+func SliceRemove(slice []string, item string) []string {
 	newSlice := make([]string, 0)
 	for _, element := range slice {
 		if element == item {

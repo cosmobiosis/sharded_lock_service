@@ -2,6 +2,7 @@ package lockserver
 
 import (
 	"fmt"
+	"sharded_lock_service/pkg/utils"
 	"sync"
 )
 
@@ -40,7 +41,10 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 	var goodToGoPool []string
 
 	lm.metaMu.Lock()
-
+	_, requestQueueExists := lm.requestsQueueMap[key]
+	if !requestQueueExists {
+		lm.requestsQueueMap[key] = make([]LockRequest, 0)
+	}
 	lm.requestsQueueMap[key] = append(lm.requestsQueueMap[key], request)
 	curReaders, readOwnedByOtherClient := lm.readLockStatus[key]
 	_, writeOwnedByOtherClient := lm.writeLocksStatus[key]
@@ -49,7 +53,7 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	if readOwnedByOtherClient && !contains(curReaders, clientId) {
+	if readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId) {
 		goodToGoPool = lm.openRequestQueueValve(key)
 		lm.notifyClientsToProceed(goodToGoPool)
 	}
@@ -71,14 +75,14 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 		panic(panicStr)
 	}
 	if request.rwflag == READ {
-		if !readOwnedByOtherClient || (readOwnedByOtherClient && !contains(curReaders, clientId)) {
+		if !readOwnedByOtherClient || (readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId)) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
 			panic(panicStr)
 		}
-		lm.readLockStatus[key] = remove(lm.readLockStatus[key], clientId)
+		lm.readLockStatus[key] = utils.SliceRemove(lm.readLockStatus[key], clientId)
 		// update the clientLocks set
 		lm.clientLocksMu.Lock()
-		lm.clientReadLocks[clientId] = remove(lm.clientReadLocks[clientId], key)
+		lm.clientReadLocks[clientId] = utils.SliceRemove(lm.clientReadLocks[clientId], key)
 		lm.clientLocksMu.Unlock()
 		if len(lm.readLockStatus[key]) == 0 {
 			delete(lm.readLockStatus, key)
@@ -91,7 +95,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 		delete(lm.writeLocksStatus, key)
 		// update the clientLocks set
 		lm.clientLocksMu.Lock()
-		lm.clientWriteLocks[clientId] = remove(lm.clientWriteLocks[clientId], key)
+		lm.clientWriteLocks[clientId] = utils.SliceRemove(lm.clientWriteLocks[clientId], key)
 		lm.clientLocksMu.Unlock()
 	}
 	goodToGoPool = lm.openRequestQueueValve(key)
@@ -144,7 +148,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		// only let the next reads out
 		headRequest, lm.requestsQueueMap[key] = lm.requestsQueueMap[key][0], lm.requestsQueueMap[key][1:]
 		// update the readLockStatus
-		if !contains(lm.readLockStatus[key], headRequest.clientId) {
+		if !utils.SliceContains(lm.readLockStatus[key], headRequest.clientId) {
 			lm.readLockStatus[key] = append(lm.readLockStatus[key], headRequest.clientId)
 			// update the clientLocks set
 			lm.clientLocksMu.Lock()
