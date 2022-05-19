@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"time"
 )
 
 type RWFlag string
@@ -30,7 +31,12 @@ type LockServer struct {
 }
 
 func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) (*Success, error) {
-	clientId := locksInfo.ClientId
+	if len(locksInfo.WriteKeys) == 0 && len(locksInfo.ReadKeys) == 0 {
+		ls.lm.clientLeaseMu.Lock()
+		ls.lm.clientLease[locksInfo.ClientId] = time.Now().Unix()
+		ls.lm.clientLeaseMu.Unlock()
+	}
+		clientId := locksInfo.ClientId
 
 	rwFlagSet := make(map[string]RWFlag)
 	for _, key := range locksInfo.ReadKeys {
@@ -136,6 +142,10 @@ func (ls *LockServer) processReleaseRequest(request LockRequest) {
 			panic(panicStr)
 		}
 		ls.lm.readLockStatus[key] = remove(ls.lm.readLockStatus[key], clientId)
+		// update the clientLocks set
+		ls.lm.clientLocksMu.Lock()
+		ls.lm.clientReadLocks[clientId] = remove(ls.lm.clientReadLocks[clientId], key)
+		ls.lm.clientLocksMu.Unlock()
 		if len(ls.lm.readLockStatus[key]) == 0 {
 			delete(ls.lm.readLockStatus, key)
 		}
@@ -145,6 +155,10 @@ func (ls *LockServer) processReleaseRequest(request LockRequest) {
 			panic(panicStr)
 		}
 		delete(ls.lm.writeLocksStatus, key)
+		// update the clientLocks set
+		ls.lm.clientLocksMu.Lock()
+		ls.lm.clientWriteLocks[clientId] = remove(ls.lm.clientWriteLocks[clientId], key)
+		ls.lm.clientLocksMu.Unlock()
 	}
 	goodToGoPool = ls.openRequestQueueValve(key)
 	ls.notifyClientsToProceed(goodToGoPool)
@@ -182,6 +196,10 @@ func (ls *LockServer) openRequestQueueValve(key string) []string {
 		headRequest, ls.lm.requestsQueueMap[key] = ls.lm.requestsQueueMap[key][0], ls.lm.requestsQueueMap[key][1:]
 		// update the writeLocksStatus
 		ls.lm.writeLocksStatus[key] = headRequest.clientId
+		// update the clientLocks set
+		ls.lm.clientLocksMu.Lock()
+		ls.lm.clientWriteLocks[headRequest.clientId] = append(ls.lm.clientWriteLocks[headRequest.clientId], key)
+		ls.lm.clientLocksMu.Unlock()
 		// update goodToGoPool
 		goodToGoPool = append(goodToGoPool, headRequest.clientId)
 		return goodToGoPool
@@ -195,6 +213,10 @@ func (ls *LockServer) openRequestQueueValve(key string) []string {
 		// update the readLockStatus
 		if !contains(ls.lm.readLockStatus[key], headRequest.clientId) {
 			ls.lm.readLockStatus[key] = append(ls.lm.readLockStatus[key], headRequest.clientId)
+			// update the clientLocks set
+			ls.lm.clientLocksMu.Lock()
+			ls.lm.clientReadLocks[headRequest.clientId] = append(ls.lm.clientReadLocks[headRequest.clientId], key)
+			ls.lm.clientLocksMu.Unlock()
 		}
 		// update goodToGoPool
 		goodToGoPool = append(goodToGoPool, headRequest.clientId)

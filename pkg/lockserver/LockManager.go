@@ -13,6 +13,13 @@ type LockManager struct {
 
 	waitersLock sync.Mutex
 	waiters map[string]chan bool
+
+	clientLocksMu sync.Mutex
+	clientReadLocks map[string][]string
+	clientWriteLocks map[string][]string
+
+	clientLeaseMu sync.Mutex
+	clientLease map[string]int64
 }
 
 func NewLockManager() *LockManager {
