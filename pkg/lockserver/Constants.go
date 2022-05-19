@@ -1,3 +1,3 @@
 package lockserver
 
-const EXPIRATION_SECS int = 5
+const EXPIRATION_SECS int64 = 5
