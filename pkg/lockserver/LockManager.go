@@ -25,6 +25,28 @@ type LockManager struct {
 	clientLease map[string]int64
 }
 
+func (lm *LockManager) processAcquireRequest(request LockRequest) {
+	key := request.key
+	clientId := request.clientId
+	var goodToGoPool []string
+
+	lm.metaMu.Lock()
+
+	lm.requestsQueueMap[key] = append(lm.requestsQueueMap[key], request)
+	curReaders, readOwnedByOtherClient := lm.readLockStatus[key]
+	_, writeOwnedByOtherClient := lm.writeLocksStatus[key]
+
+	if readOwnedByOtherClient && writeOwnedByOtherClient {
+		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
+		panic(panicStr)
+	}
+	if readOwnedByOtherClient && !contains(curReaders, clientId) {
+		goodToGoPool = lm.openRequestQueueValve(key)
+		lm.notifyClientsToProceed(goodToGoPool)
+	}
+	lm.metaMu.Unlock()
+}
+
 func NewLockManager() *LockManager {
 	return &LockManager{
 		readLockStatus: make(map[string][]string),
