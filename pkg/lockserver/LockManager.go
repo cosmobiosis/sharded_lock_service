@@ -25,6 +25,15 @@ type LockManager struct {
 	clientLease map[string]int64
 }
 
+func NewLockManager() *LockManager {
+	return &LockManager{
+		readLockStatus: make(map[string][]string),
+		writeLocksStatus: make(map[string]string),
+		requestsQueueMap: make(map[string][]LockRequest),
+		waiters: make(map[string]chan bool),
+	}
+}
+
 func (lm *LockManager) processAcquireRequest(request LockRequest) {
 	key := request.key
 	clientId := request.clientId
@@ -45,15 +54,6 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 		lm.notifyClientsToProceed(goodToGoPool)
 	}
 	lm.metaMu.Unlock()
-}
-
-func NewLockManager() *LockManager {
-	return &LockManager{
-		readLockStatus: make(map[string][]string),
-		writeLocksStatus: make(map[string]string),
-		requestsQueueMap: make(map[string][]LockRequest),
-		waiters: make(map[string]chan bool),
-	}
 }
 
 func (lm *LockManager) processReleaseRequest(request LockRequest) {
