@@ -26,7 +26,7 @@ func (leaseM *LeaseManager) Release(clientId string) error {
 	leaseM.lm.clientLocksMu.Unlock()
 
 	sort.Strings(keysToRelease)
-	utils.reverse(keysToRelease)
+	utils.SliceReverse(keysToRelease)
 
 	for _, key := range keysToRelease {
 		request := LockRequest{

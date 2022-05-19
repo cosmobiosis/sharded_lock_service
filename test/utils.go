@@ -1,22 +1,21 @@
 package test
 
 import (
-	"fmt"
 	"sharded_lock_service/pkg/lockserver"
 	"strconv"
-	"testing"
-	context "context"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 type TestInfo struct {
+	serverAddrs []string
 	ShutdownChannels []chan bool
 }
 
 func InitTest(numServers int, startPort int) *TestInfo {
 	shutdownChannels := make([]chan bool, 0)
+	serverAddrs := make([]string, 0)
 	for i := 1; i < numServers; i++ {
 		serverAddr := ":" + strconv.Itoa(startPort + i)
+		serverAddrs = append(serverAddrs, "localhost" + serverAddr)
 		shutChan := make(chan bool)
 		shutdownChannels = append(shutdownChannels, shutChan)
 		go func() {
@@ -28,6 +27,7 @@ func InitTest(numServers int, startPort int) *TestInfo {
 	}
 
 	retVal := &TestInfo{
+		serverAddrs: serverAddrs,
 		ShutdownChannels: shutdownChannels,
 	}
 	return retVal

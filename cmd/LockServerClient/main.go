@@ -1,18 +1,15 @@
-package test
+package LockServerClient
 
 import (
 	context "context"
 	"fmt"
-	grpc "google.golang.org/grpc"
-	lockserver "sharded_lock_service/pkg/lockserver"
-	"testing"
+	"google.golang.org/grpc"
+	"sharded_lock_service/pkg/lockserver"
 	"time"
 )
 
-func TestBasicReadAcquire(t *testing.T) {
-	testingInfo := InitTest(1, 1000)
-	serverAddr := testingInfo.serverAddrs[0]
-	conn, err := grpc.Dial(serverAddr, grpc.WithInsecure())
+func main() {
+	conn, err := grpc.Dial("localhost:1000", grpc.WithInsecure())
 	if err != nil {
 		panic(err)
 	}
@@ -28,5 +25,4 @@ func TestBasicReadAcquire(t *testing.T) {
 		return
 	}
 	fmt.Println(resp.Flag)
-	testingInfo.ShutdownChannels[0] <- true
 }
