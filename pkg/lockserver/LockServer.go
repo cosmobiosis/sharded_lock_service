@@ -37,7 +37,7 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 		ls.lm.clientLease[locksInfo.ClientId] = time.Now().Unix()
 		ls.lm.clientLeaseMu.Unlock()
 	}
-		clientId := locksInfo.ClientId
+	clientId := locksInfo.ClientId
 
 	rwFlagSet := make(map[string]RWFlag)
 	for _, key := range locksInfo.ReadKeys {

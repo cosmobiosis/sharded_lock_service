@@ -1,4 +1,4 @@
-package LockServerClient
+package main
 
 import (
 	context "context"
@@ -14,7 +14,7 @@ func main() {
 		panic(err)
 	}
 	c := lockserver.NewLockServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
 	defer cancel()
 	resp, err := c.Acquire(ctx, &lockserver.AcquireLocksInfo{
 		ClientId: "a",
@@ -22,7 +22,7 @@ func main() {
 		WriteKeys: []string{"wkey3"},
 	})
 	if err != nil {
-		return
+		panic(err)
 	}
 	fmt.Println(resp.Flag)
 }

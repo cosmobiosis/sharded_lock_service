@@ -22,7 +22,7 @@ func main() {
 	// Parse the flags.
 	flag.Parse()
 
-	for i := 1; i < *numServers; i++ {
+	for i := 0; i < *numServers; i++ {
 		serverAddr := ":" + strconv.Itoa(*startPort + i)
 		var shutChan chan bool
 		go func() {

@@ -20,8 +20,23 @@ type ConcurrentStringMap struct {
 	ValueMap map[string]*StringValue
 }
 
+func (cm *ConcurrentSliceMap) exists(key string) bool {
+	cm.mapLock.RLock()
+	_, exists := cm.ValueMap[key]
+	cm.mapLock.RUnlock()
+	return exists
+}
+
 func (cm *ConcurrentSliceMap) append(key string, value string) {
 	// need keysLock
+	cm.mapLock.Lock()
+	_, exists := cm.ValueMap[key]
+	if !exists {
+		cm.ValueMap[key] = &SliceValue{
+			wrappedSlice: make([]string, 0),
+		}
+	}
+	cm.mapLock.Unlock()
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 }
 
@@ -34,6 +49,13 @@ func (cm *ConcurrentSliceMap) popHead(key string) string {
 
 func (cm *ConcurrentSliceMap) empty(key string) bool {
 	// need keysLock
+	cm.mapLock.RLock()
+	_, exists := cm.ValueMap[key]
+	if !exists {
+		cm.mapLock.RUnlock()
+		return true
+	}
+	cm.mapLock.RUnlock()
 	return len(cm.ValueMap[key].wrappedSlice) == 0
 }
 

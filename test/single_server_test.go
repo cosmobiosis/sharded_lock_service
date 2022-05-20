@@ -25,7 +25,7 @@ func TestBasicReadAcquire(t *testing.T) {
 		WriteKeys: []string{"wkey3"},
 	})
 	if err != nil {
-		return
+		panic(err)
 	}
 	fmt.Println(resp.Flag)
 	testingInfo.ShutdownChannels[0] <- true

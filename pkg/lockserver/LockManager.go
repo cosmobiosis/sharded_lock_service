@@ -31,6 +31,9 @@ func NewLockManager() *LockManager {
 		readLockStatus: make(map[string][]string),
 		writeLocksStatus: make(map[string]string),
 		requestsQueueMap: make(map[string][]LockRequest),
+		clientReadLocks: make(map[string][]string),
+		clientWriteLocks: make(map[string][]string),
+		clientLease: make(map[string]int64),
 		waiters: make(map[string]chan bool),
 	}
 }
@@ -53,7 +56,9 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	if readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId) {
+	nobodyHasLock := !readOwnedByOtherClient && !writeOwnedByOtherClient
+	somebodyNotMeHasLock := readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId)
+	if nobodyHasLock || somebodyNotMeHasLock {
 		goodToGoPool = lm.openRequestQueueValve(key)
 		lm.notifyClientsToProceed(goodToGoPool)
 	}
@@ -105,6 +110,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 }
 
 func (lm *LockManager) openRequestQueueValve(key string) []string {
+	utils.Nlog("valve begins")
 	// key: the key we're allowing clients to acquire
 	// retVal: goodToGoPool is for new clients that successfully acquire the lock, we need to signal them
 	// nobody's owned the lock
@@ -122,6 +128,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		panic(panicStr)
 	}
 	if writeOwnedByOtherClient {
+		utils.Nlog("write owned by other client")
 		// we cannot let any one in because somebody is holding the exclusive lock
 		return goodToGoPool
 	}
@@ -129,6 +136,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 	// rwValve: nobody's holding any rwlock of the key, so we're allowed to make write acquire coming in also
 	rwValve := !readOwnedByOtherClient && !writeOwnedByOtherClient
 	if rwValve && len(lm.requestsQueueMap[key]) > 0 && lm.requestsQueueMap[key][0].rwflag == WRITE {
+		utils.Nlog("letting out write key: [%s]", key)
 		// only let the next write out
 		headRequest, lm.requestsQueueMap[key] = lm.requestsQueueMap[key][0], lm.requestsQueueMap[key][1:]
 		// update the writeLocksStatus
@@ -145,6 +153,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 	// readOwnedByOtherClient && !writeOwnedByOtherClient
 	// we're letting more readers coming in
 	for len(lm.requestsQueueMap[key]) > 0 && lm.requestsQueueMap[key][0].rwflag != WRITE {
+		utils.Nlog("letting out read key: [%s]", key)
 		// only let the next reads out
 		headRequest, lm.requestsQueueMap[key] = lm.requestsQueueMap[key][0], lm.requestsQueueMap[key][1:]
 		// update the readLockStatus
@@ -152,6 +161,10 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 			lm.readLockStatus[key] = append(lm.readLockStatus[key], headRequest.clientId)
 			// update the clientLocks set
 			lm.clientLocksMu.Lock()
+			//_, exists := lm.clientReadLocks[headRequest.clientId]
+			//if !exists {
+			//	lm.clientReadLocks[headRequest.clientId] = make([]string, 0)
+			//}
 			lm.clientReadLocks[headRequest.clientId] = append(lm.clientReadLocks[headRequest.clientId], key)
 			lm.clientLocksMu.Unlock()
 		}

@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"sharded_lock_service/pkg/lockserver"
 	"strconv"
 )
@@ -13,7 +14,7 @@ type TestInfo struct {
 func InitTest(numServers int, startPort int) *TestInfo {
 	shutdownChannels := make([]chan bool, 0)
 	serverAddrs := make([]string, 0)
-	for i := 1; i < numServers; i++ {
+	for i := 0; i < numServers; i++ {
 		serverAddr := ":" + strconv.Itoa(startPort + i)
 		serverAddrs = append(serverAddrs, "localhost" + serverAddr)
 		shutChan := make(chan bool)
@@ -30,5 +31,6 @@ func InitTest(numServers int, startPort int) *TestInfo {
 		serverAddrs: serverAddrs,
 		ShutdownChannels: shutdownChannels,
 	}
+	fmt.Println(retVal.serverAddrs)
 	return retVal
 }
