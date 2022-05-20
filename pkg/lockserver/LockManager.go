@@ -161,10 +161,6 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 			lm.readLockStatus[key] = append(lm.readLockStatus[key], headRequest.clientId)
 			// update the clientLocks set
 			lm.clientLocksMu.Lock()
-			//_, exists := lm.clientReadLocks[headRequest.clientId]
-			//if !exists {
-			//	lm.clientReadLocks[headRequest.clientId] = make([]string, 0)
-			//}
 			lm.clientReadLocks[headRequest.clientId] = append(lm.clientReadLocks[headRequest.clientId], key)
 			lm.clientLocksMu.Unlock()
 		}

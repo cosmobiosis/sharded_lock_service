@@ -16,8 +16,8 @@ func (kl *KeysLock) lock(key string) {
 	if !exists {
 		kl.lockMap[key] = &sync.RWMutex{}
 	}
-	keyGranularityLock, _ := kl.lockMap[key]
 	kl.lockMapLock.Unlock()
+	keyGranularityLock, _ := kl.lockMap[key]
 	keyGranularityLock.Lock()
 }
 
