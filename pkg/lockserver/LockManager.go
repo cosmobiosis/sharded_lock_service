@@ -45,6 +45,7 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 	var goodToGoPool []string
 
 	lm.keysLock.Lock(key)
+	defer lm.keysLock.Unlock(key)
 
 	lm.requestsQueueMap.Append(key, request)
 	readOwned := lm.readLockStatus.Exists(key)
@@ -60,8 +61,6 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 		goodToGoPool = lm.openRequestQueueValve(key)
 		lm.notifyClientsToProceed(goodToGoPool)
 	}
-
-	lm.keysLock.Unlock(key)
 }
 
 func (lm *LockManager) processReleaseRequest(request LockRequest) {
@@ -70,6 +69,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 	var goodToGoPool []string
 
 	lm.keysLock.Lock(key)
+	defer lm.keysLock.Unlock(key)
 
 	readOwned := lm.readLockStatus.Exists(key)
 	writeOwned := lm.writeLocksStatus.Exists(key)
@@ -79,7 +79,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 		panic(panicStr)
 	}
 	if request.rwflag == READ {
-		if !readOwned || lm.readLockStatus.Contains(key, clientId) {
+		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
 			panic(panicStr)
 		}
@@ -106,8 +106,6 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 	}
 	goodToGoPool = lm.openRequestQueueValve(key)
 	lm.notifyClientsToProceed(goodToGoPool)
-
-	lm.keysLock.Unlock(key)
 }
 
 func (lm *LockManager) openRequestQueueValve(key string) []string {
@@ -115,10 +113,11 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 	// key: the key we're allowing clients to acquire
 	// retVal: goodToGoPool is for new clients that successfully acquire the lock, we need to signal them
 	// nobody's owned the lock
-	// readLockStatusLock locked
-	// writeLocksStatusLock locked
-	// requestQueueMapLock locked
 	goodToGoPool := make([]string, 0)
+	requestQueueExists := lm.requestsQueueMap.Exists(key)
+	if !requestQueueExists {
+		return goodToGoPool
+	}
 	// first check whether nobody is using the key at all
 	readOwned := lm.readLockStatus.Exists(key)
 	writeOwned := lm.writeLocksStatus.Exists(key)
@@ -157,7 +156,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		// only let the next reads out
 		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the readLockStatus
-		if lm.readLockStatus.Contains(key, headRequest.clientId) {
+		if !lm.readLockStatus.Contains(key, headRequest.clientId) {
 			lm.readLockStatus.Append(key, headRequest.clientId)
 			// update the clientLocks set
 			lm.clientsIdLock.Lock(headRequest.clientId)
