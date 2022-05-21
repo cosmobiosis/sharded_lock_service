@@ -1,38 +1,104 @@
 package utils
 
-import "sync"
+import (
+	"sharded_lock_service/pkg/lockserver"
+	"sync"
+)
 
-type SliceValue struct {
-	wrappedSlice []string
+type SliceLockRequest struct {
+	wrappedSlice []lockserver.LockRequest
 }
 
-type StringValue struct {
-	wrappedStr string
-}
-
-type ConcurrentSliceMap struct {
+type ConcurrentLockRequestSliceMap struct {
 	mapLock sync.RWMutex
-	ValueMap map[string]*SliceValue
+	ValueMap map[string]*SliceLockRequest
 }
 
-type ConcurrentStringMap struct {
-	mapLock sync.RWMutex
-	ValueMap map[string]*StringValue
-}
-
-func (cm *ConcurrentSliceMap) exists(key string) bool {
+func (cm *ConcurrentLockRequestSliceMap) Exists(key string) bool {
 	cm.mapLock.RLock()
 	_, exists := cm.ValueMap[key]
 	cm.mapLock.RUnlock()
 	return exists
 }
 
-func (cm *ConcurrentSliceMap) append(key string, value string) {
-	// need keysLock
+func (cm *ConcurrentLockRequestSliceMap) Append(key string, value lockserver.LockRequest) {
 	cm.mapLock.Lock()
 	_, exists := cm.ValueMap[key]
 	if !exists {
-		cm.ValueMap[key] = &SliceValue{
+		cm.ValueMap[key] = &SliceLockRequest{
+			wrappedSlice: make([]lockserver.LockRequest, 0),
+		}
+	}
+	cm.mapLock.Unlock()
+	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
+}
+
+func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) lockserver.LockRequest {
+	head := cm.ValueMap[key].wrappedSlice[0]
+	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]
+	return head
+}
+
+func (cm *ConcurrentLockRequestSliceMap) Get(key string) []lockserver.LockRequest {
+	return cm.ValueMap[key].wrappedSlice
+}
+
+func (cm *ConcurrentLockRequestSliceMap) Empty(key string) bool {
+	return len(cm.ValueMap[key].wrappedSlice) == 0
+}
+
+func (cm *ConcurrentLockRequestSliceMap) Head(key string) lockserver.LockRequest {
+	return cm.ValueMap[key].wrappedSlice[0]
+}
+
+func (cm *ConcurrentLockRequestSliceMap) Delete(key string) {
+	cm.mapLock.Lock()
+	delete(cm.ValueMap, key)
+	cm.mapLock.Unlock()
+}
+
+func NewConcurrentLockRequestSliceMap() *ConcurrentLockRequestSliceMap {
+	return &ConcurrentLockRequestSliceMap {
+		ValueMap: make(map[string]*SliceLockRequest),
+	}
+}
+
+type SliceStringValue struct {
+	wrappedSlice []string
+}
+
+type ConcurrentStringSliceMap struct {
+	mapLock sync.RWMutex
+	ValueMap map[string]*SliceStringValue
+}
+
+func (cm *ConcurrentStringSliceMap) Exists(key string) bool {
+	cm.mapLock.RLock()
+	_, exists := cm.ValueMap[key]
+	cm.mapLock.RUnlock()
+	return exists
+}
+
+func (cm *ConcurrentStringSliceMap) Contains(key string, value string) bool {
+	if !cm.Exists(key) {
+		return false
+	}
+	return SliceContains(cm.Get(key), value)
+}
+
+func (cm *ConcurrentStringSliceMap) Get(key string) []string {
+	return cm.ValueMap[key].wrappedSlice
+}
+
+func (cm *ConcurrentStringSliceMap) Remove(key string, value string) {
+	cm.ValueMap[key].wrappedSlice = SliceRemove(cm.ValueMap[key].wrappedSlice, value)
+}
+
+func (cm *ConcurrentStringSliceMap) Append(key string, value string) {
+	cm.mapLock.Lock()
+	_, exists := cm.ValueMap[key]
+	if !exists {
+		cm.ValueMap[key] = &SliceStringValue{
 			wrappedSlice: make([]string, 0),
 		}
 	}
@@ -40,63 +106,60 @@ func (cm *ConcurrentSliceMap) append(key string, value string) {
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 }
 
-func (cm *ConcurrentSliceMap) popHead(key string) string {
-	// need keysLock
+func (cm *ConcurrentStringSliceMap) PopHead(key string) string {
 	head := cm.ValueMap[key].wrappedSlice[0]
 	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]
 	return head
 }
 
-func (cm *ConcurrentSliceMap) empty(key string) bool {
-	// need keysLock
-	cm.mapLock.RLock()
-	_, exists := cm.ValueMap[key]
-	if !exists {
-		cm.mapLock.RUnlock()
-		return true
-	}
-	cm.mapLock.RUnlock()
+func (cm *ConcurrentStringSliceMap) Empty(key string) bool {
 	return len(cm.ValueMap[key].wrappedSlice) == 0
 }
 
-func (cm *ConcurrentSliceMap) head(key string) string {
-	// need keysLock
+func (cm *ConcurrentStringSliceMap) Head(key string) string {
 	return cm.ValueMap[key].wrappedSlice[0]
 }
 
-func (cm *ConcurrentSliceMap) delete(key string) {
+func (cm *ConcurrentStringSliceMap) Delete(key string) {
 	cm.mapLock.Lock()
 	delete(cm.ValueMap, key)
 	cm.mapLock.Unlock()
 }
 
-func (cm *ConcurrentStringMap) exists(key string) bool {
+func NewConcurrentStringSliceMap() *ConcurrentStringSliceMap {
+	return &ConcurrentStringSliceMap{
+		ValueMap: make(map[string]*SliceStringValue),
+	}
+}
+
+type StringValue struct {
+	wrappedStr string
+}
+
+type ConcurrentStringMap struct {
+	mapLock sync.RWMutex
+	ValueMap map[string]*StringValue
+}
+
+func (cm *ConcurrentStringMap) Exists(key string) bool {
 	cm.mapLock.RLock()
 	_, exists := cm.ValueMap[key]
 	cm.mapLock.RUnlock()
 	return exists
 }
 
-func (cm *ConcurrentStringMap) delete(key string) {
+func (cm *ConcurrentStringMap) Delete(key string) {
 	cm.mapLock.Lock()
 	delete(cm.ValueMap, key)
 	cm.mapLock.Unlock()
 }
 
-func (cm *ConcurrentStringMap) set(key string, value string) {
-	// need keysLock
+func (cm *ConcurrentStringMap) Set(key string, value string) {
 	cm.ValueMap[key].wrappedStr = value
 }
 
-func (cm *ConcurrentStringMap) get(key string) string {
-	// need keysLock
+func (cm *ConcurrentStringMap) Get(key string) string {
 	return cm.ValueMap[key].wrappedStr
-}
-
-func NewConcurrentSliceMap() *ConcurrentSliceMap {
-	return &ConcurrentSliceMap{
-		ValueMap: make(map[string]*SliceValue),
-	}
 }
 
 func NewConcurrentStringMap() *ConcurrentStringMap {

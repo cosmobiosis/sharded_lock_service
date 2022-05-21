@@ -10,7 +10,7 @@ type KeysLock struct {
 	lockMap map[string]*sync.RWMutex
 }
 
-func (kl *KeysLock) lock(key string) {
+func (kl *KeysLock) Lock(key string) {
 	kl.lockMapLock.Lock()
 	_, exists := kl.lockMap[key]
 	if !exists {
@@ -21,7 +21,7 @@ func (kl *KeysLock) lock(key string) {
 	keyGranularityLock.Lock()
 }
 
-func (kl *KeysLock) unlock(key string) {
+func (kl *KeysLock) Unlock(key string) {
 	kl.lockMapLock.Lock()
 	keyGranularityLock, exists := kl.lockMap[key]
 	if !exists {
@@ -30,4 +30,10 @@ func (kl *KeysLock) unlock(key string) {
 	}
 	kl.lockMapLock.Unlock()
 	keyGranularityLock.Unlock()
+}
+
+func NewKeysLock() *KeysLock {
+	return &KeysLock{
+		lockMap: make(map[string]*sync.RWMutex),
+	}
 }

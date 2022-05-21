@@ -14,16 +14,16 @@ type LeaseManager struct {
 func (leaseM *LeaseManager) Release(clientId string) error {
 	rwFlagSet := make(map[string]RWFlag)
 	keysToRelease := make([]string, 0)
-	leaseM.lm.clientLocksMu.Lock()
-	for _, key := range leaseM.lm.clientReadLocks[clientId] {
+	leaseM.lm.clientsIdLock.Lock(clientId)
+	for _, key := range leaseM.lm.clientReadLocks.Get(clientId) {
 		rwFlagSet[key] = READ
 		keysToRelease = append(keysToRelease, key)
 	}
-	for _, key := range leaseM.lm.clientWriteLocks[clientId] {
+	for _, key := range leaseM.lm.clientWriteLocks.Get(clientId) {
 		rwFlagSet[key] = WRITE
 		keysToRelease = append(keysToRelease, key)
 	}
-	leaseM.lm.clientLocksMu.Unlock()
+	leaseM.lm.clientsIdLock.Unlock(clientId)
 
 	sort.Strings(keysToRelease)
 	utils.SliceReverse(keysToRelease)
