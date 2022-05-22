@@ -9,6 +9,7 @@ import "google/protobuf/empty.proto";
 service LockService {
     rpc Acquire (AcquireLocksInfo) returns (Success) {}
     rpc Release (ReleaseLocksInfo) returns (Success) {}
+    rpc Heartbeat (AcquireLocksInfo) returns (Success) {}
 }
 
 message AcquireLocksInfo {

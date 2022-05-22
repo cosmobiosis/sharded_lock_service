@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type LockServiceClient interface {
 	Acquire(ctx context.Context, in *AcquireLocksInfo, opts ...grpc.CallOption) (*Success, error)
 	Release(ctx context.Context, in *ReleaseLocksInfo, opts ...grpc.CallOption) (*Success, error)
+	Heartbeat(ctx context.Context, in *AcquireLocksInfo, opts ...grpc.CallOption) (*Success, error)
 }
 
 type lockServiceClient struct {
@@ -48,12 +49,22 @@ func (c *lockServiceClient) Release(ctx context.Context, in *ReleaseLocksInfo, o
 	return out, nil
 }
 
+func (c *lockServiceClient) Heartbeat(ctx context.Context, in *AcquireLocksInfo, opts ...grpc.CallOption) (*Success, error) {
+	out := new(Success)
+	err := c.cc.Invoke(ctx, "/lockserver.LockService/Heartbeat", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LockServiceServer is the server API for LockService service.
 // All implementations must embed UnimplementedLockServiceServer
 // for forward compatibility
 type LockServiceServer interface {
 	Acquire(context.Context, *AcquireLocksInfo) (*Success, error)
 	Release(context.Context, *ReleaseLocksInfo) (*Success, error)
+	Heartbeat(context.Context, *AcquireLocksInfo) (*Success, error)
 	mustEmbedUnimplementedLockServiceServer()
 }
 
@@ -66,6 +77,9 @@ func (UnimplementedLockServiceServer) Acquire(context.Context, *AcquireLocksInfo
 }
 func (UnimplementedLockServiceServer) Release(context.Context, *ReleaseLocksInfo) (*Success, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Release not implemented")
+}
+func (UnimplementedLockServiceServer) Heartbeat(context.Context, *AcquireLocksInfo) (*Success, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
 }
 func (UnimplementedLockServiceServer) mustEmbedUnimplementedLockServiceServer() {}
 
@@ -116,6 +130,24 @@ func _LockService_Release_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LockService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcquireLocksInfo)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LockServiceServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/lockserver.LockService/Heartbeat",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LockServiceServer).Heartbeat(ctx, req.(*AcquireLocksInfo))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LockService_ServiceDesc is the grpc.ServiceDesc for LockService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -130,6 +162,10 @@ var LockService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Release",
 			Handler:    _LockService_Release_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _LockService_Heartbeat_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
