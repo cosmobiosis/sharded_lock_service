@@ -7,7 +7,7 @@ import (
 
 type KeysLock struct {
 	lockMapLock sync.RWMutex
-	lockMap map[string]*sync.RWMutex
+	lockMap     map[string]*sync.RWMutex
 }
 
 func (kl *KeysLock) Lock(key string) {
@@ -16,19 +16,19 @@ func (kl *KeysLock) Lock(key string) {
 	if !exists {
 		kl.lockMap[key] = &sync.RWMutex{}
 	}
-	kl.lockMapLock.Unlock()
 	keyGranularityLock, _ := kl.lockMap[key]
+	kl.lockMapLock.Unlock()
 	keyGranularityLock.Lock()
 }
 
 func (kl *KeysLock) Unlock(key string) {
-	kl.lockMapLock.Lock()
+	kl.lockMapLock.RLock()
 	keyGranularityLock, exists := kl.lockMap[key]
 	if !exists {
 		panicStr, _ := fmt.Printf("KeysLock trying to unlock key [%s] that does not exist", key)
 		panic(panicStr)
 	}
-	kl.lockMapLock.Unlock()
+	kl.lockMapLock.RUnlock()
 	keyGranularityLock.Unlock()
 }
 
