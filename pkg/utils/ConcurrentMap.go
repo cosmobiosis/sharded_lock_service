@@ -10,7 +10,7 @@ type SliceLockRequest struct {
 }
 
 type ConcurrentLockRequestSliceMap struct {
-	mapLock sync.RWMutex
+	mapLock  sync.RWMutex
 	ValueMap map[string]*SliceLockRequest
 }
 
@@ -29,29 +29,39 @@ func (cm *ConcurrentLockRequestSliceMap) Append(key string, value types.LockRequ
 			wrappedSlice: make([]types.LockRequest, 0),
 		}
 	}
-	cm.mapLock.Unlock()
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
+	cm.mapLock.Unlock()
 }
 
 func (cm *ConcurrentLockRequestSliceMap) PushHead(key string, value types.LockRequest) {
+	cm.mapLock.Lock()
 	cm.ValueMap[key].wrappedSlice = append([]types.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
+	cm.mapLock.Unlock()
 }
 
 func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) types.LockRequest {
+	cm.mapLock.Lock()
 	head := cm.ValueMap[key].wrappedSlice[0]
 	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]
+	cm.mapLock.Unlock()
 	return head
 }
 
 func (cm *ConcurrentLockRequestSliceMap) Get(key string) []types.LockRequest {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return cm.ValueMap[key].wrappedSlice
 }
 
 func (cm *ConcurrentLockRequestSliceMap) Empty(key string) bool {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return len(cm.ValueMap[key].wrappedSlice) == 0
 }
 
 func (cm *ConcurrentLockRequestSliceMap) Head(key string) types.LockRequest {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return cm.ValueMap[key].wrappedSlice[0]
 }
 
@@ -62,7 +72,7 @@ func (cm *ConcurrentLockRequestSliceMap) Delete(key string) {
 }
 
 func NewConcurrentLockRequestSliceMap() *ConcurrentLockRequestSliceMap {
-	return &ConcurrentLockRequestSliceMap {
+	return &ConcurrentLockRequestSliceMap{
 		ValueMap: make(map[string]*SliceLockRequest),
 	}
 }
@@ -72,7 +82,7 @@ type SliceStringValue struct {
 }
 
 type ConcurrentStringSliceMap struct {
-	mapLock sync.RWMutex
+	mapLock  sync.RWMutex
 	ValueMap map[string]*SliceStringValue
 }
 
@@ -91,11 +101,15 @@ func (cm *ConcurrentStringSliceMap) Contains(key string, value string) bool {
 }
 
 func (cm *ConcurrentStringSliceMap) Get(key string) []string {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return cm.ValueMap[key].wrappedSlice
 }
 
 func (cm *ConcurrentStringSliceMap) Remove(key string, value string) {
+	cm.mapLock.Lock()
 	cm.ValueMap[key].wrappedSlice = SliceRemove(cm.ValueMap[key].wrappedSlice, value)
+	cm.mapLock.Unlock()
 }
 
 func (cm *ConcurrentStringSliceMap) Append(key string, value string) {
@@ -106,21 +120,27 @@ func (cm *ConcurrentStringSliceMap) Append(key string, value string) {
 			wrappedSlice: make([]string, 0),
 		}
 	}
-	cm.mapLock.Unlock()
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
+	cm.mapLock.Unlock()
 }
 
 func (cm *ConcurrentStringSliceMap) PopHead(key string) string {
+	cm.mapLock.Lock()
 	head := cm.ValueMap[key].wrappedSlice[0]
 	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]
+	cm.mapLock.Unlock()
 	return head
 }
 
 func (cm *ConcurrentStringSliceMap) Empty(key string) bool {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return len(cm.ValueMap[key].wrappedSlice) == 0
 }
 
 func (cm *ConcurrentStringSliceMap) Head(key string) string {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return cm.ValueMap[key].wrappedSlice[0]
 }
 
@@ -141,7 +161,7 @@ type StringValue struct {
 }
 
 type ConcurrentStringMap struct {
-	mapLock sync.RWMutex
+	mapLock  sync.RWMutex
 	ValueMap map[string]*StringValue
 }
 
@@ -159,10 +179,14 @@ func (cm *ConcurrentStringMap) Delete(key string) {
 }
 
 func (cm *ConcurrentStringMap) Set(key string, value string) {
-	cm.ValueMap[key].wrappedStr = value
+	cm.mapLock.Lock()
+	cm.ValueMap[key] = &StringValue{wrappedStr: value}
+	cm.mapLock.Unlock()
 }
 
 func (cm *ConcurrentStringMap) Get(key string) string {
+	cm.mapLock.RLock()
+	defer cm.mapLock.RUnlock()
 	return cm.ValueMap[key].wrappedStr
 }
 
