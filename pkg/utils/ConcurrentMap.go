@@ -1,12 +1,12 @@
 package utils
 
 import (
-	"sharded_lock_service/pkg/lockserver"
+	"sharded_lock_service/pkg/types"
 	"sync"
 )
 
 type SliceLockRequest struct {
-	wrappedSlice []lockserver.LockRequest
+	wrappedSlice []types.LockRequest
 }
 
 type ConcurrentLockRequestSliceMap struct {
@@ -21,29 +21,29 @@ func (cm *ConcurrentLockRequestSliceMap) Exists(key string) bool {
 	return exists
 }
 
-func (cm *ConcurrentLockRequestSliceMap) Append(key string, value lockserver.LockRequest) {
+func (cm *ConcurrentLockRequestSliceMap) Append(key string, value types.LockRequest) {
 	cm.mapLock.Lock()
 	_, exists := cm.ValueMap[key]
 	if !exists {
 		cm.ValueMap[key] = &SliceLockRequest{
-			wrappedSlice: make([]lockserver.LockRequest, 0),
+			wrappedSlice: make([]types.LockRequest, 0),
 		}
 	}
 	cm.mapLock.Unlock()
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 }
 
-func (cm *ConcurrentLockRequestSliceMap) PushHead(key string, value lockserver.LockRequest) {
-	cm.ValueMap[key].wrappedSlice = append([]lockserver.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
+func (cm *ConcurrentLockRequestSliceMap) PushHead(key string, value types.LockRequest) {
+	cm.ValueMap[key].wrappedSlice = append([]types.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
 }
 
-func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) lockserver.LockRequest {
+func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) types.LockRequest {
 	head := cm.ValueMap[key].wrappedSlice[0]
 	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]
 	return head
 }
 
-func (cm *ConcurrentLockRequestSliceMap) Get(key string) []lockserver.LockRequest {
+func (cm *ConcurrentLockRequestSliceMap) Get(key string) []types.LockRequest {
 	return cm.ValueMap[key].wrappedSlice
 }
 
@@ -51,7 +51,7 @@ func (cm *ConcurrentLockRequestSliceMap) Empty(key string) bool {
 	return len(cm.ValueMap[key].wrappedSlice) == 0
 }
 
-func (cm *ConcurrentLockRequestSliceMap) Head(key string) lockserver.LockRequest {
+func (cm *ConcurrentLockRequestSliceMap) Head(key string) types.LockRequest {
 	return cm.ValueMap[key].wrappedSlice[0]
 }
 

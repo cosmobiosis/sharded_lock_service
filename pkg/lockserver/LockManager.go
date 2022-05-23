@@ -2,6 +2,7 @@ package lockserver
 
 import (
 	"fmt"
+	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sync"
 )
@@ -39,9 +40,9 @@ func NewLockManager() *LockManager {
 	}
 }
 
-func (lm *LockManager) processAcquireRequest(request LockRequest, isKeeper bool) {
-	key := request.key
-	clientId := request.clientId
+func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper bool) {
+	key := request.Key
+	clientId := request.ClientId
 	var goodToGoPool []string
 
 	lm.keysLock.Lock(key)
@@ -67,9 +68,9 @@ func (lm *LockManager) processAcquireRequest(request LockRequest, isKeeper bool)
 	}
 }
 
-func (lm *LockManager) processReleaseRequest(request LockRequest) {
-	key := request.key
-	clientId := request.clientId
+func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
+	key := request.Key
+	clientId := request.ClientId
 	var goodToGoPool []string
 
 	lm.keysLock.Lock(key)
@@ -82,7 +83,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	if request.rwflag == READ {
+	if request.Rwflag == types.READ {
 		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
 			panic(panicStr)
@@ -97,7 +98,7 @@ func (lm *LockManager) processReleaseRequest(request LockRequest) {
 			lm.readLockStatus.Delete(key)
 		}
 
-	} else if request.rwflag == WRITE {
+	} else if request.Rwflag == types.WRITE {
 		if !writeOwned || (writeOwned && lm.writeLocksStatus.Get(key) != clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a write key that client does not own %s by %s\n", key, clientId)
 			panic(panicStr)
@@ -138,37 +139,37 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 
 	// rwValve: nobody's holding any rwlock of the key, so we're allowed to make write acquire coming in also
 	rwValve := !readOwned && !writeOwned
-	if rwValve && !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).rwflag == WRITE {
+	if rwValve && !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag == types.WRITE {
 		utils.Nlog("letting out write key: [%s]", key)
 		// only let the next write out
 		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the writeLocksStatus
-		lm.writeLocksStatus.Set(key, headRequest.clientId)
+		lm.writeLocksStatus.Set(key, headRequest.ClientId)
 		// update the clientLocks set
 		lm.clientsIdLock.Lock(key)
-		lm.clientWriteLocks.Append(headRequest.clientId, key)
+		lm.clientWriteLocks.Append(headRequest.ClientId, key)
 		lm.clientsIdLock.Unlock(key)
 		// update goodToGoPool
-		goodToGoPool = append(goodToGoPool, headRequest.clientId)
+		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 		return goodToGoPool
 	}
 	// last possibility:
 	// readOwnedByOtherClient && !writeOwnedByOtherClient
 	// we're letting more readers coming in
-	for !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).rwflag != WRITE {
+	for !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag != types.WRITE {
 		utils.Nlog("letting out read key: [%s]", key)
 		// only let the next reads out
 		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the readLockStatus
-		if !lm.readLockStatus.Contains(key, headRequest.clientId) {
-			lm.readLockStatus.Append(key, headRequest.clientId)
+		if !lm.readLockStatus.Contains(key, headRequest.ClientId) {
+			lm.readLockStatus.Append(key, headRequest.ClientId)
 			// update the clientLocks set
-			lm.clientsIdLock.Lock(headRequest.clientId)
-			lm.clientReadLocks.Append(headRequest.clientId, key)
-			lm.clientsIdLock.Unlock(headRequest.clientId)
+			lm.clientsIdLock.Lock(headRequest.ClientId)
+			lm.clientReadLocks.Append(headRequest.ClientId, key)
+			lm.clientsIdLock.Unlock(headRequest.ClientId)
 		}
 		// update goodToGoPool
-		goodToGoPool = append(goodToGoPool, headRequest.clientId)
+		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 	}
 	return goodToGoPool
 }

@@ -2,6 +2,7 @@ package lockserver
 
 import (
 	"github.com/robfig/cron/v3"
+	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sort"
 	"time"
@@ -12,15 +13,15 @@ type LeaseManager struct {
 }
 
 func (leaseM *LeaseManager) Release(clientId string) error {
-	rwFlagSet := make(map[string]RWFlag)
+	rwFlagSet := make(map[string]types.RWFlag)
 	keysToRelease := make([]string, 0)
 	leaseM.lm.clientsIdLock.Lock(clientId)
 	for _, key := range leaseM.lm.clientReadLocks.Get(clientId) {
-		rwFlagSet[key] = READ
+		rwFlagSet[key] = types.READ
 		keysToRelease = append(keysToRelease, key)
 	}
 	for _, key := range leaseM.lm.clientWriteLocks.Get(clientId) {
-		rwFlagSet[key] = WRITE
+		rwFlagSet[key] = types.WRITE
 		keysToRelease = append(keysToRelease, key)
 	}
 	leaseM.lm.clientsIdLock.Unlock(clientId)
@@ -29,10 +30,10 @@ func (leaseM *LeaseManager) Release(clientId string) error {
 	utils.SliceReverse(keysToRelease)
 
 	for _, key := range keysToRelease {
-		request := LockRequest{
-			key: key,
-			rwflag: rwFlagSet[key],
-			clientId: clientId,
+		request := types.LockRequest{
+			Key: key,
+			Rwflag: rwFlagSet[key],
+			ClientId: clientId,
 		}
 		leaseM.lm.processReleaseRequest(request)
 	}
