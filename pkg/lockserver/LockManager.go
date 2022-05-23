@@ -39,7 +39,7 @@ func NewLockManager() *LockManager {
 	}
 }
 
-func (lm *LockManager) processAcquireRequest(request LockRequest) {
+func (lm *LockManager) processAcquireRequest(request LockRequest, isKeeper bool) {
 	key := request.key
 	clientId := request.clientId
 	var goodToGoPool []string
@@ -47,7 +47,11 @@ func (lm *LockManager) processAcquireRequest(request LockRequest) {
 	lm.keysLock.Lock(key)
 	defer lm.keysLock.Unlock(key)
 
-	lm.requestsQueueMap.Append(key, request)
+	if isKeeper {
+		lm.requestsQueueMap.PushHead(key, request)
+	} else {
+		lm.requestsQueueMap.Append(key, request)
+	}
 	readOwned := lm.readLockStatus.Exists(key)
 	writeOwned := lm.writeLocksStatus.Exists(key)
 

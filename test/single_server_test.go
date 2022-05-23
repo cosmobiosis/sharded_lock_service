@@ -4,7 +4,7 @@ import (
 	context "context"
 	"github.com/stretchr/testify/assert"
 	grpc "google.golang.org/grpc"
-	lockserver "sharded_lock_service/pkg/lockserver"
+	"sharded_lock_service/pkg/lockserver"
 	"testing"
 	"time"
 )

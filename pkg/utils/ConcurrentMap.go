@@ -33,6 +33,10 @@ func (cm *ConcurrentLockRequestSliceMap) Append(key string, value lockserver.Loc
 	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 }
 
+func (cm *ConcurrentLockRequestSliceMap) PushHead(key string, value lockserver.LockRequest) {
+	cm.ValueMap[key].wrappedSlice = append([]lockserver.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
+}
+
 func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) lockserver.LockRequest {
 	head := cm.ValueMap[key].wrappedSlice[0]
 	cm.ValueMap[key].wrappedSlice = cm.ValueMap[key].wrappedSlice[1:]

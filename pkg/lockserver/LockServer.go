@@ -58,7 +58,7 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 			rwflag: rwFlagSet[key],
 			clientId: clientId,
 		}
-		ls.lm.processAcquireRequest(request)
+		ls.lm.processAcquireRequest(request, locksInfo.IsKeeper)
 
 		ls.lm.waitersLock.Lock()
 		waiter, ok := ls.lm.waiters[clientId]
