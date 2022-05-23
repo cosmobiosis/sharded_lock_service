@@ -8,35 +8,40 @@ import (
 )
 
 type LockManager struct {
-	keysLock *utils.KeysLock
-	readLockStatus  *utils.ConcurrentStringSliceMap
+	keysLock       *utils.KeysLock
+	readLockStatus *utils.ConcurrentStringSliceMap
 	// key -> list of array clientIds
 	writeLocksStatus *utils.ConcurrentStringMap
 	// key -> []LockRequest
 	requestsQueueMap *utils.ConcurrentLockRequestSliceMap
-	UnimplementedLockServiceServer
 
 	waitersLock sync.Mutex
-	waiters map[string]chan bool
+	waiters     map[string]chan bool
 
-	clientsIdLock *utils.KeysLock
-	clientReadLocks *utils.ConcurrentStringSliceMap
+	clientsIdLock    *utils.KeysLock
+	clientReadLocks  *utils.ConcurrentStringSliceMap
 	clientWriteLocks *utils.ConcurrentStringSliceMap
 
 	clientLeaseMu sync.Mutex
-	clientLease map[string]int64
+	clientLease   map[string]int64
+
+	UnimplementedLockServiceServer
 }
 
 func NewLockManager() *LockManager {
 	return &LockManager{
-		readLockStatus: utils.NewConcurrentStringSliceMap(),
+		keysLock:         utils.NewKeysLock(),
+		readLockStatus:   utils.NewConcurrentStringSliceMap(),
 		writeLocksStatus: utils.NewConcurrentStringMap(),
 		requestsQueueMap: utils.NewConcurrentLockRequestSliceMap(),
-		keysLock: utils.NewKeysLock(),
-		clientReadLocks: utils.NewConcurrentStringSliceMap(),
-		clientWriteLocks: utils.NewConcurrentStringSliceMap(),
-		clientLease: make(map[string]int64),
+
 		waiters: make(map[string]chan bool),
+
+		clientsIdLock:    utils.NewKeysLock(),
+		clientReadLocks:  utils.NewConcurrentStringSliceMap(),
+		clientWriteLocks: utils.NewConcurrentStringSliceMap(),
+
+		clientLease: make(map[string]int64),
 	}
 }
 
@@ -61,7 +66,7 @@ func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper
 		panic(panicStr)
 	}
 	nobodyHasLock := !readOwned && !writeOwned
-	somebodyNotMeHasReadLock := lm.readLockStatus.Contains(key, clientId)
+	somebodyNotMeHasReadLock := !lm.readLockStatus.Contains(key, clientId) && readOwned
 	if nobodyHasLock || somebodyNotMeHasReadLock {
 		goodToGoPool = lm.openRequestQueueValve(key)
 		lm.notifyClientsToProceed(goodToGoPool)
