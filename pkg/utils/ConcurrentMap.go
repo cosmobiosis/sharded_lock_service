@@ -29,14 +29,20 @@ func (cm *ConcurrentLockRequestSliceMap) Append(key string, value types.LockRequ
 			wrappedSlice: make([]types.LockRequest, 0),
 		}
 	}
-	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 	cm.mapLock.Unlock()
+	cm.ValueMap[key].wrappedSlice = append(cm.ValueMap[key].wrappedSlice, value)
 }
 
 func (cm *ConcurrentLockRequestSliceMap) PushHead(key string, value types.LockRequest) {
 	cm.mapLock.Lock()
-	cm.ValueMap[key].wrappedSlice = append([]types.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
+	_, exists := cm.ValueMap[key]
+	if !exists {
+		cm.ValueMap[key] = &SliceLockRequest{
+			wrappedSlice: make([]types.LockRequest, 0),
+		}
+	}
 	cm.mapLock.Unlock()
+	cm.ValueMap[key].wrappedSlice = append([]types.LockRequest{value}, cm.ValueMap[key].wrappedSlice...)
 }
 
 func (cm *ConcurrentLockRequestSliceMap) PopHead(key string) types.LockRequest {
