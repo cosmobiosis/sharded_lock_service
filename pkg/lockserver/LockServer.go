@@ -89,6 +89,11 @@ func (ls *LockServer) Release(ctx context.Context, locksInfo *ReleaseLocksInfo) 
 	return &Success{Flag: true}, nil
 }
 
+
+func (ls *LockServer) Ping(ctx context.Context, request *PingRequest) (*Success, error) {
+	return &Success{Flag: true}, nil
+}
+
 var _ LockServerInterface = new(LockServer)
 
 func NewLockServer(addr string, lockManager *LockManager) *LockServer {
