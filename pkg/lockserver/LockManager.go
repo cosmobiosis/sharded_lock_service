@@ -53,6 +53,7 @@ func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper
 	lm.keysLock.Lock(key)
 	defer lm.keysLock.Unlock(key)
 
+	utils.Nlog("Client [%s] tends to acquire [%s]", clientId, key)
 	if isKeeper {
 		lm.requestsQueueMap.PushHead(key, request)
 	} else {
@@ -88,6 +89,7 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
+	utils.Nlog("Client [%s] tends to release [%s]", clientId, key)
 	if request.Rwflag == types.READ {
 		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
@@ -105,11 +107,14 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 
 	} else if request.Rwflag == types.WRITE {
 		if !writeOwned || (writeOwned && lm.writeLocksStatus.Get(key) != clientId) {
-			panicStr, _ := fmt.Printf("server tends to release a write key that client does not own %s by %s\n", key, clientId)
+			panicStr, _ := fmt.Printf("client [%s] tends to release a write key [%s] he does not own\n", clientId, key)
+			if writeOwned {
+				fmt.Printf("The lock is currently owned by client [%s]\n", lm.writeLocksStatus.Get(key))
+			}
 			panic(panicStr)
 		}
 		lm.writeLocksStatus.Delete(key)
-		// update the clientLocks set
+		// update the clientLocks setx
 		lm.clientsIdLock.Lock(key)
 		lm.clientWriteLocks.Remove(clientId, key)
 		lm.clientsIdLock.Unlock(key)
@@ -119,7 +124,7 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 }
 
 func (lm *LockManager) openRequestQueueValve(key string) []string {
-	utils.Nlog("valve begins")
+	utils.Nlog("%s: valve opens", key)
 	// key: the key we're allowing clients to acquire
 	// retVal: goodToGoPool is for new clients that successfully acquire the lock, we need to signal them
 	// nobody's owned the lock
@@ -145,7 +150,6 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 	// rwValve: nobody's holding any rwlock of the key, so we're allowed to make write acquire coming in also
 	rwValve := !readOwned && !writeOwned
 	if rwValve && !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag == types.WRITE {
-		utils.Nlog("letting out write key: [%s]", key)
 		// only let the next write out
 		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the writeLocksStatus
@@ -155,6 +159,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		lm.clientWriteLocks.Append(headRequest.ClientId, key)
 		lm.clientsIdLock.Unlock(key)
 		// update goodToGoPool
+		utils.Nlog("letting out write key: [%s] for [%s]", key, headRequest.ClientId)
 		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 		return goodToGoPool
 	}
@@ -162,7 +167,6 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 	// readOwnedByOtherClient && !writeOwnedByOtherClient
 	// we're letting more readers coming in
 	for !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag != types.WRITE {
-		utils.Nlog("letting out read key: [%s]", key)
 		// only let the next reads out
 		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the readLockStatus
@@ -174,6 +178,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 			lm.clientsIdLock.Unlock(headRequest.ClientId)
 		}
 		// update goodToGoPool
+		utils.Nlog("letting out read key: [%s] for [%s]", key, headRequest.ClientId)
 		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 	}
 	return goodToGoPool
