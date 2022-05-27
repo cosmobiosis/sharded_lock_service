@@ -3,7 +3,6 @@ package test
 import (
 	context "context"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	grpc "google.golang.org/grpc"
 	"sharded_lock_service/pkg/lockserver"
 	"testing"
