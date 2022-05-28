@@ -12,6 +12,16 @@ import (
 func TestChaotic(t *testing.T) {
 	testingInfo := InitTest(1, 1000)
 	serverAddr := testingInfo.serverAddrs[0]
+	txns := InitChaoticTestingEnv(TestTxnsConfig{
+		numTxn: 1,
+		numKeysInPool: 5,
+		readPerTxn: 1,
+		writePerTxn: 1,
+		keyLength: 3,
+	})
+	for i := 0; i < len(txns); i++ {
+		fmt.Println(txns[i])
+	}
 	conn, err := grpc.Dial(serverAddr, grpc.WithInsecure())
 	if err != nil {
 		panic(err)

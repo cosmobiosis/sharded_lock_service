@@ -89,7 +89,6 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	utils.Nlog("Client [%s] tends to release [%s]", clientId, key)
 	if request.Rwflag == types.READ {
 		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
