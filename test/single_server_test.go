@@ -10,12 +10,6 @@ import (
 	"time"
 )
 
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 func TestBasicReadAcquire(t *testing.T) {
 	testingInfo := InitTest(1, 1000)
 	serverAddr := testingInfo.serverAddrs[0]

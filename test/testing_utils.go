@@ -1,14 +1,18 @@
 package test
 
 import (
+	context "context"
 	"fmt"
+	"google.golang.org/grpc"
+	"math"
 	"math/rand"
 	"sharded_lock_service/pkg/lockserver"
+	"sharded_lock_service/pkg/utils"
 	"strconv"
-	"math"
+	"time"
 )
 
-type TestInfo struct {
+type TestServerInfo struct {
 	serverAddrs []string
 	ShutdownChannels []chan bool
 }
@@ -33,11 +37,7 @@ type Operation struct {
 	Value    string
 }
 
-type Transaction struct {
-	ops []Operation
-}
-
-func InitTest(numServers int, startPort int) *TestInfo {
+func InitTest(numServers int, startPort int) *TestServerInfo {
 	shutdownChannels := make([]chan bool, 0)
 	serverAddrs := make([]string, 0)
 	for i := 0; i < numServers; i++ {
@@ -53,7 +53,7 @@ func InitTest(numServers int, startPort int) *TestInfo {
 		}()
 	}
 
-	retVal := &TestInfo{
+	retVal := &TestServerInfo{
 		serverAddrs: serverAddrs,
 		ShutdownChannels: shutdownChannels,
 	}
@@ -70,6 +70,104 @@ func InitChaoticTestingEnv(config TestTxnsConfig) []Transaction {
 		txns = append(txns, txn)
 	}
 	return txns
+}
+
+type Transaction struct {
+	ops []Operation
+}
+
+type TransactionWorker struct {
+	clientId string
+	txn Transaction
+	serverAddrs []string
+	lockClients []*lockserver.LockServiceClient
+}
+
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (w *TransactionWorker) cacheGrpcClient(serverIndex int) {
+	conn, err := grpc.Dial(w.serverAddrs[serverIndex], grpc.WithInsecure())
+	check(err)
+	c := lockserver.NewLockServiceClient(conn)
+	w.lockClients[serverIndex] = &c
+}
+
+//func (w *TransactionWorker) closeGrpcClients() {
+//	conn, err := grpc.Dial(w.serverAddrs[serverIndex], grpc.WithInsecure())
+//	check(err)
+//	c := lockserver.NewLockServiceClient(conn)
+//	w.lockClients[serverIndex] = &c
+//	for _, client := range w.lockClients {
+//		(*client)
+//	}
+//}
+
+func NewTransactionWorker(serverAddrs []string, txn Transaction) *TransactionWorker {
+	txnWorker := TransactionWorker {
+		txn: txn,
+		serverAddrs: serverAddrs,
+		clientId: generateRandomString(30),
+		lockClients: make([]*lockserver.LockServiceClient, len(serverAddrs)),
+	}
+	for i := 0; i <  len(txnWorker.serverAddrs); i++ {
+		txnWorker.cacheGrpcClient(i)
+	}
+	return &txnWorker
+}
+
+func (w *TransactionWorker) startTxn() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	defer cancel()
+
+	readBins := make([][]string, len(w.serverAddrs))
+	writeBins := make([][]string, len(w.serverAddrs))
+
+	for i := 0; i <  len(w.serverAddrs); i++ {
+		readBins[i] = make([]string, 0)
+		writeBins[i] = make([]string, 0)
+	}
+
+	for i := 0; i < len(w.txn.ops); i++  {
+		op := w.txn.ops[i]
+		binIndex := int(utils.Hash(op.Key) % uint32(len(w.serverAddrs)))
+		if op.Rwflag == READ {
+			readBins[binIndex] = append(readBins[binIndex], op.Key)
+		} else {
+			writeBins[binIndex] = append(writeBins[binIndex], op.Key)
+		}
+	}
+
+	utils.Tlog("Begin Transaction %s", w.clientId)
+	for i := 0; i < len(w.lockClients); i++ {
+		readKeys := readBins[i]
+		writeKeys := writeBins[i]
+		w.cacheGrpcClient(i)
+		c := w.lockClients[i]
+		_, err := (*c).Acquire(ctx, &lockserver.AcquireLocksInfo {
+			ClientId: w.clientId,
+			ReadKeys: readKeys,
+			WriteKeys: writeKeys,
+		})
+		check(err)
+	}
+
+	for i := 0; i < len(w.lockClients); i++ {
+		readKeys := readBins[i]
+		writeKeys := writeBins[i]
+		w.cacheGrpcClient(i)
+		c := w.lockClients[i]
+		_, err := (*c).Release(ctx, &lockserver.ReleaseLocksInfo {
+			ClientId: w.clientId,
+			ReadKeys: readKeys,
+			WriteKeys: writeKeys,
+		})
+		check(err)
+	}
+	utils.Tlog("End Transaction %s", w.clientId)
 }
 
 func inSlice(slice []int, target int) bool {
@@ -111,12 +209,12 @@ func retrieveRandomSetOfKeys(keysPool []string, config TestTxnsConfig) []string 
 
 func generateRandomKeyPools(config TestTxnsConfig) []string {
 	numKeys := int(math.Max(float64(config.numKeysInPool), float64(config.readPerTxn + config.writePerTxn)))
-	keyPool := make([]string, numKeys)
+	keysPool := make([]string, 0)
 	for i := 0; i < numKeys; i++ {
 		key := generateRandomString(config.keyLength)
-		keyPool = append(keyPool, key)
+		keysPool = append(keysPool, key)
 	}
-	return keyPool
+	return keysPool
 }
 
 func generateRandomString(stringlen int) string {

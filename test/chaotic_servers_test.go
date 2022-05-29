@@ -1,77 +1,41 @@
 package test
 
 import (
-	context "context"
-	"fmt"
-	grpc "google.golang.org/grpc"
-	"sharded_lock_service/pkg/lockserver"
+	"sync"
 	"testing"
 	"time"
+
+	//context "context"
+	//grpc "google.golang.org/grpc"
+	//"sharded_lock_service/pkg/lockserver"
+	//"time"
 )
 
 func TestChaotic(t *testing.T) {
-	testingInfo := InitTest(1, 1000)
-	serverAddr := testingInfo.serverAddrs[0]
+	NUM_SERVERS := 20
+	testingInfo := InitTest(NUM_SERVERS, 1000)
+	time.Sleep(2 * time.Second)
 	txns := InitChaoticTestingEnv(TestTxnsConfig{
-		numTxn: 1,
-		numKeysInPool: 5,
-		readPerTxn: 1,
-		writePerTxn: 1,
-		keyLength: 3,
+		numTxn: 1000,
+		numKeysInPool: 10,
+		keyLength: 10,
+		readPerTxn: 2,
+		writePerTxn: 5,
 	})
+	txnWorkers := make([]*TransactionWorker, 0)
 	for i := 0; i < len(txns); i++ {
-		fmt.Println(txns[i])
+		txnWorkers = append(txnWorkers, NewTransactionWorker(testingInfo.serverAddrs, txns[i]))
 	}
-	conn, err := grpc.Dial(serverAddr, grpc.WithInsecure())
-	if err != nil {
-		panic(err)
+	wg := sync.WaitGroup{}
+	wg.Add(len(txnWorkers))
+	for i := 0; i < len(txnWorkers); i++ {
+		go func(iCopy int) {
+			txnWorkers[iCopy].startTxn()
+			wg.Done()
+		}(i)
 	}
-	c := lockserver.NewLockServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	resp, err := c.Acquire(ctx, &lockserver.AcquireLocksInfo{
-		ClientId: "a",
-		ReadKeys: []string{"rkey1", "rkey2"},
-	})
-	if err != nil {
-		panic(err)
+	wg.Wait()
+	for i := 0; i < len(testingInfo.ShutdownChannels); i++ {
+		testingInfo.ShutdownChannels[i] <- true
 	}
-	fmt.Println(resp.Flag)
-	time.Sleep(time.Second)
-
-	endTestChan := make(chan struct{})
-
-	go func() {
-		resp, err = c.Acquire(ctx, &lockserver.AcquireLocksInfo{
-			ClientId:  "b",
-			WriteKeys: []string{"rkey1", "rkey2"},
-		})
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(resp.Flag)
-		time.Sleep(time.Second)
-
-		resp, err = c.Release(ctx, &lockserver.ReleaseLocksInfo{
-			ClientId:  "b",
-			WriteKeys: []string{"rkey1", "rkey2"},
-		})
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(resp.Flag)
-		endTestChan <- struct{}{}
-	}()
-
-	resp, err = c.Release(ctx, &lockserver.ReleaseLocksInfo{
-		ClientId: "a",
-		ReadKeys: []string{"rkey2", "rkey1"},
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(resp.Flag)
-
-	<-endTestChan
-	testingInfo.ShutdownChannels[0] <- true
 }
