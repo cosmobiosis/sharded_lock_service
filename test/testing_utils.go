@@ -18,9 +18,12 @@ type TestServerInfo struct {
 }
 
 type TestTxnsConfig struct {
+	numServers int
+	readLatency int
+	writeLatency int
 	numTxn int
-	numKeysInPool int
-	readPerTxn int
+	numKeysInPool           int
+	readPerTxn              int
 	writePerTxn int
 	keyLength int
 }
@@ -61,7 +64,10 @@ func InitTest(numServers int, startPort int) *TestServerInfo {
 	return retVal
 }
 
-func InitChaoticTestingEnv(config TestTxnsConfig) []Transaction {
+func InitChaoticTestingEnv(config TestTxnsConfig) (*TestServerInfo, []Transaction) {
+	testingInfo := InitTest(config.numServers, 1000)
+	time.Sleep(1 * time.Second)
+
 	txns := make([]Transaction, 0)
 	keysPool := generateRandomKeyPools(config)
 	for i := 0; i < config.numTxn; i++ {
@@ -69,7 +75,14 @@ func InitChaoticTestingEnv(config TestTxnsConfig) []Transaction {
 		txn := generateRandomTxn(keySet, config)
 		txns = append(txns, txn)
 	}
-	return txns
+	return testingInfo, txns
+}
+
+func ShutdownTest(testingInfo *TestServerInfo) {
+	for i := 0; i < len(testingInfo.ShutdownChannels); i++ {
+		testingInfo.ShutdownChannels[i] <- true
+	}
+	time.Sleep(1 * time.Second)
 }
 
 type Transaction struct {
@@ -81,6 +94,8 @@ type TransactionWorker struct {
 	txn Transaction
 	serverAddrs []string
 	lockClients []*lockserver.LockServiceClient
+	readLatencyMilliseconds int
+	writeLatencyMilliseconds int
 }
 
 func check(err error) {
@@ -106,12 +121,18 @@ func (w *TransactionWorker) cacheGrpcClient(serverIndex int) {
 //	}
 //}
 
-func NewTransactionWorker(serverAddrs []string, txn Transaction) *TransactionWorker {
+func NewTransactionWorker(
+	serverAddrs []string,
+	txn Transaction,
+	readLatencyMilliseconds int,
+	writeLatencyMilliseconds int) *TransactionWorker {
 	txnWorker := TransactionWorker {
 		txn: txn,
 		serverAddrs: serverAddrs,
 		clientId: generateRandomString(30),
 		lockClients: make([]*lockserver.LockServiceClient, len(serverAddrs)),
+		readLatencyMilliseconds: readLatencyMilliseconds,
+		writeLatencyMilliseconds: writeLatencyMilliseconds,
 	}
 	for i := 0; i <  len(txnWorker.serverAddrs); i++ {
 		txnWorker.cacheGrpcClient(i)
@@ -153,6 +174,9 @@ func (w *TransactionWorker) startTxn() {
 		})
 		check(err)
 	}
+
+	totalSleepMs := w.readLatencyMilliseconds + w.writeLatencyMilliseconds
+	time.Sleep(time.Duration(totalSleepMs) * time.Millisecond)
 
 	for i := 0; i < len(w.lockClients); i++ {
 		readKeys := readBins[i]

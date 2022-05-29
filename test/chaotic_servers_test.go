@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -11,23 +12,16 @@ import (
 	//"time"
 )
 
-func TestChaotic(t *testing.T) {
-	NUM_SERVERS := 10
-	testingInfo := InitTest(NUM_SERVERS, 1000)
-	time.Sleep(2 * time.Second)
-	txns := InitChaoticTestingEnv(TestTxnsConfig{
-		numTxn: 300,
-		numKeysInPool: 10,
-		keyLength: 10,
-		readPerTxn: 2,
-		writePerTxn: 5,
-	})
+func chaoticTest(config TestTxnsConfig) int64 {
+	// return time
+	testingInfo, txns := InitChaoticTestingEnv(config)
 	txnWorkers := make([]*TransactionWorker, 0)
 	for i := 0; i < len(txns); i++ {
-		txnWorkers = append(txnWorkers, NewTransactionWorker(testingInfo.serverAddrs, txns[i]))
+		txnWorkers = append(txnWorkers, NewTransactionWorker(testingInfo.serverAddrs, txns[i], config.readLatency, config.writeLatency))
 	}
 	wg := sync.WaitGroup{}
 	wg.Add(len(txnWorkers))
+	start := time.Now().UTC().UnixMilli()
 	for i := 0; i < len(txnWorkers); i++ {
 		go func(iCopy int) {
 			txnWorkers[iCopy].startTxn()
@@ -35,7 +29,51 @@ func TestChaotic(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	for i := 0; i < len(testingInfo.ShutdownChannels); i++ {
-		testingInfo.ShutdownChannels[i] <- true
+	end := time.Now().UTC().UnixMilli()
+	ShutdownTest(testingInfo)
+	return end - start
+}
+
+func TestSampleChaotic(t *testing.T) {
+	config := TestTxnsConfig{
+		numServers: 20,
+		readLatency: 1,
+		writeLatency: 1,
+		keyLength: 10,
+		numTxn: 100,
+		numKeysInPool: 100,
+		readPerTxn: 4,
+		writePerTxn: 4,
 	}
+	chaoticTest(config)
+}
+
+func TestServerShardPerformance(t *testing.T) {
+	config := TestTxnsConfig {
+		numServers: 1,
+		readLatency: 100,
+		writeLatency: 100,
+		keyLength: 10,
+		numTxn: 10,
+		numKeysInPool: 500,
+		readPerTxn: 50,
+		writePerTxn: 50,
+	}
+	gap := chaoticTest(config)
+	fmt.Println(gap)
+}
+
+func TestTxnPerformance(t *testing.T) {
+	config := TestTxnsConfig{
+		numServers:    1,
+		readLatency:   100,
+		writeLatency:  100,
+		keyLength:     10,
+		numTxn:        10,
+		numKeysInPool: 500,
+		readPerTxn:    50,
+		writePerTxn:   50,
+	}
+	gap := chaoticTest(config)
+	fmt.Println(gap)
 }
