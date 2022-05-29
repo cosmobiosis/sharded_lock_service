@@ -42,7 +42,7 @@ func InitTest(numServers int, startPort int) *TestServerInfo {
 	serverAddrs := make([]string, 0)
 	for i := 0; i < numServers; i++ {
 		serverAddr := ":" + strconv.Itoa(startPort + i)
-		serverAddrs = append(serverAddrs, "localhost" + serverAddr)
+		serverAddrs = append(serverAddrs, "127.0.0.1" + serverAddr)
 		shutChan := make(chan bool)
 		shutdownChannels = append(shutdownChannels, shutChan)
 		go func() {
@@ -145,7 +145,6 @@ func (w *TransactionWorker) startTxn() {
 	for i := 0; i < len(w.lockClients); i++ {
 		readKeys := readBins[i]
 		writeKeys := writeBins[i]
-		w.cacheGrpcClient(i)
 		c := w.lockClients[i]
 		_, err := (*c).Acquire(ctx, &lockserver.AcquireLocksInfo {
 			ClientId: w.clientId,
@@ -158,7 +157,6 @@ func (w *TransactionWorker) startTxn() {
 	for i := 0; i < len(w.lockClients); i++ {
 		readKeys := readBins[i]
 		writeKeys := writeBins[i]
-		w.cacheGrpcClient(i)
 		c := w.lockClients[i]
 		_, err := (*c).Release(ctx, &lockserver.ReleaseLocksInfo {
 			ClientId: w.clientId,

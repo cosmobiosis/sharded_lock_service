@@ -12,11 +12,11 @@ import (
 )
 
 func TestChaotic(t *testing.T) {
-	NUM_SERVERS := 20
+	NUM_SERVERS := 10
 	testingInfo := InitTest(NUM_SERVERS, 1000)
 	time.Sleep(2 * time.Second)
 	txns := InitChaoticTestingEnv(TestTxnsConfig{
-		numTxn: 1000,
+		numTxn: 300,
 		numKeysInPool: 10,
 		keyLength: 10,
 		readPerTxn: 2,
