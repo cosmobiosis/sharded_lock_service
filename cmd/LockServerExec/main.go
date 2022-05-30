@@ -17,8 +17,8 @@ func main() {
 	// Custom flag Usage message
 	setupErrDetected := make(chan bool)
 
-	numServers := flag.Int("numServers", 10, "number of total servers to set up")
-	startPort := flag.Int("startPort", 1000, "starting address of servers")
+	numServers := flag.Int("numServers", 1, "number of total servers to set up")
+	startPort := flag.Int("startPort", 2000, "starting address of servers")
 	// Parse the flags.
 	flag.Parse()
 

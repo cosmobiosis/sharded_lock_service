@@ -9,18 +9,25 @@ import "google/protobuf/empty.proto";
 service LockService {
     rpc Acquire (AcquireLocksInfo) returns (Success) {}
     rpc Release (ReleaseLocksInfo) returns (Success) {}
+//    rpc Heartbeat (AcquireLocksInfo) returns (Success) {}
+    rpc Ping (PingRequest) returns (Success) {}
 }
 
 message AcquireLocksInfo {
     string clientId = 1;
     repeated string readKeys = 2;
     repeated string writeKeys = 3;
+    bool isKeeper = 4;
 }
 
 message ReleaseLocksInfo {
     string clientId = 1;
     repeated string readKeys = 2;
     repeated string writeKeys = 3;
+}
+
+message PingRequest {
+    string clientId = 1;
 }
 
 message Success {

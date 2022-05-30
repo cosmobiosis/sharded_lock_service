@@ -7,22 +7,11 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sort"
 	"time"
 )
-
-type RWFlag string
-const (
-	READ RWFlag = "read"
-	WRITE     = "write"
-)
-
-type LockRequest struct {
-	key string
-	rwflag RWFlag
-	clientId string
-}
 
 type LockServer struct {
 	// key -> list of array clientIds
@@ -39,12 +28,12 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 	}
 	clientId := locksInfo.ClientId
 
-	rwFlagSet := make(map[string]RWFlag)
+	rwFlagSet := make(map[string]types.RWFlag)
 	for _, key := range locksInfo.ReadKeys {
-		rwFlagSet[key] = READ
+		rwFlagSet[key] = types.READ
 	}
 	for _, key := range locksInfo.WriteKeys {
-		rwFlagSet[key] = WRITE
+		rwFlagSet[key] = types.WRITE
 	}
 
 	keysToAcquire := append(locksInfo.ReadKeys, locksInfo.WriteKeys...)
@@ -53,12 +42,12 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 	sort.Strings(keysToAcquire)
 
 	for _, key := range keysToAcquire {
-		request := LockRequest{
-			key: key,
-			rwflag: rwFlagSet[key],
-			clientId: clientId,
+		request := types.LockRequest{
+			Key:      key,
+			Rwflag:   rwFlagSet[key],
+			ClientId: clientId,
 		}
-		ls.lm.processAcquireRequest(request)
+		ls.lm.processAcquireRequest(request, locksInfo.IsKeeper)
 
 		ls.lm.waitersLock.Lock()
 		waiter, ok := ls.lm.waiters[clientId]
@@ -76,12 +65,12 @@ func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) 
 func (ls *LockServer) Release(ctx context.Context, locksInfo *ReleaseLocksInfo) (*Success, error) {
 	clientId := locksInfo.ClientId
 
-	rwFlagSet := make(map[string]RWFlag)
+	rwFlagSet := make(map[string]types.RWFlag)
 	for _, key := range locksInfo.ReadKeys {
-		rwFlagSet[key] = READ
+		rwFlagSet[key] = types.READ
 	}
 	for _, key := range locksInfo.WriteKeys {
-		rwFlagSet[key] = WRITE
+		rwFlagSet[key] = types.WRITE
 	}
 
 	keysToRelease := append(locksInfo.ReadKeys, locksInfo.WriteKeys...)
@@ -89,14 +78,18 @@ func (ls *LockServer) Release(ctx context.Context, locksInfo *ReleaseLocksInfo) 
 	utils.SliceReverse(keysToRelease)
 
 	for _, key := range keysToRelease {
-		request := LockRequest{
-			key: key,
-			rwflag: rwFlagSet[key],
-			clientId: clientId,
+		request := types.LockRequest{
+			Key: key,
+			Rwflag: rwFlagSet[key],
+			ClientId: clientId,
 		}
 		ls.lm.processReleaseRequest(request)
 	}
 	// release lock by reversed sorting sequence
+	return &Success{Flag: true}, nil
+}
+
+func (ls *LockServer) Ping(ctx context.Context, request *PingRequest) (*Success, error) {
 	return &Success{Flag: true}, nil
 }
 

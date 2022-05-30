@@ -2,170 +2,183 @@ package lockserver
 
 import (
 	"fmt"
+	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sync"
 )
 
 type LockManager struct {
-	metaMu sync.Mutex
-	readLockStatus  map[string][]string
+	keysLock       *utils.KeysLock
+	readLockStatus *utils.ConcurrentStringSliceMap
 	// key -> list of array clientIds
-	writeLocksStatus map[string]string
+	writeLocksStatus *utils.ConcurrentStringMap
 	// key -> []LockRequest
-	requestsQueueMap map[string][]LockRequest
-	UnimplementedLockServiceServer
+	requestsQueueMap *utils.ConcurrentLockRequestSliceMap
 
 	waitersLock sync.Mutex
-	waiters map[string]chan bool
+	waiters     map[string]chan bool
 
-	clientLocksMu sync.Mutex
-	clientReadLocks map[string][]string
-	clientWriteLocks map[string][]string
+	clientsIdLock    *utils.KeysLock
+	clientReadLocks  *utils.ConcurrentStringSliceMap
+	clientWriteLocks *utils.ConcurrentStringSliceMap
 
 	clientLeaseMu sync.Mutex
-	clientLease map[string]int64
+	clientLease   map[string]int64
+
+	UnimplementedLockServiceServer
 }
 
 func NewLockManager() *LockManager {
 	return &LockManager{
-		readLockStatus: make(map[string][]string),
-		writeLocksStatus: make(map[string]string),
-		requestsQueueMap: make(map[string][]LockRequest),
-		clientReadLocks: make(map[string][]string),
-		clientWriteLocks: make(map[string][]string),
-		clientLease: make(map[string]int64),
+		keysLock:         utils.NewKeysLock(),
+		readLockStatus:   utils.NewConcurrentStringSliceMap(),
+		writeLocksStatus: utils.NewConcurrentStringMap(),
+		requestsQueueMap: utils.NewConcurrentLockRequestSliceMap(),
+
 		waiters: make(map[string]chan bool),
+
+		clientsIdLock:    utils.NewKeysLock(),
+		clientReadLocks:  utils.NewConcurrentStringSliceMap(),
+		clientWriteLocks: utils.NewConcurrentStringSliceMap(),
+
+		clientLease: make(map[string]int64),
 	}
 }
 
-func (lm *LockManager) processAcquireRequest(request LockRequest) {
-	key := request.key
-	clientId := request.clientId
+func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper bool) {
+	key := request.Key
+	clientId := request.ClientId
 	var goodToGoPool []string
 
-	lm.metaMu.Lock()
-	_, requestQueueExists := lm.requestsQueueMap[key]
-	if !requestQueueExists {
-		lm.requestsQueueMap[key] = make([]LockRequest, 0)
-	}
-	lm.requestsQueueMap[key] = append(lm.requestsQueueMap[key], request)
-	curReaders, readOwnedByOtherClient := lm.readLockStatus[key]
-	_, writeOwnedByOtherClient := lm.writeLocksStatus[key]
+	lm.keysLock.Lock(key)
+	defer lm.keysLock.Unlock(key)
 
-	if readOwnedByOtherClient && writeOwnedByOtherClient {
+	utils.Nlog("Client [%s] tends to acquire [%s]", clientId, key)
+	if isKeeper {
+		lm.requestsQueueMap.PushHead(key, request)
+	} else {
+		lm.requestsQueueMap.Append(key, request)
+	}
+	readOwned := lm.readLockStatus.Exists(key)
+	writeOwned := lm.writeLocksStatus.Exists(key)
+
+	if readOwned && writeOwned {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	nobodyHasLock := !readOwnedByOtherClient && !writeOwnedByOtherClient
-	somebodyNotMeHasLock := readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId)
-	if nobodyHasLock || somebodyNotMeHasLock {
+	nobodyHasLock := !readOwned && !writeOwned
+	somebodyNotMeHasReadLock := !lm.readLockStatus.Contains(key, clientId) && readOwned
+	if nobodyHasLock || somebodyNotMeHasReadLock {
 		goodToGoPool = lm.openRequestQueueValve(key)
 		lm.notifyClientsToProceed(goodToGoPool)
 	}
-	lm.metaMu.Unlock()
 }
 
-func (lm *LockManager) processReleaseRequest(request LockRequest) {
-	key := request.key
-	clientId := request.clientId
+func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
+	key := request.Key
+	clientId := request.ClientId
 	var goodToGoPool []string
 
-	lm.metaMu.Lock()
+	lm.keysLock.Lock(key)
+	defer lm.keysLock.Unlock(key)
 
-	curReaders, readOwnedByOtherClient := lm.readLockStatus[key]
-	curWriter, writeOwnedByOtherClient := lm.writeLocksStatus[key]
+	readOwned := lm.readLockStatus.Exists(key)
+	writeOwned := lm.writeLocksStatus.Exists(key)
 
-	if readOwnedByOtherClient && writeOwnedByOtherClient {
+	if readOwned && writeOwned {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	if request.rwflag == READ {
-		if !readOwnedByOtherClient || (readOwnedByOtherClient && !utils.SliceContains(curReaders, clientId)) {
+	if request.Rwflag == types.READ {
+		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
 			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
 			panic(panicStr)
 		}
-		lm.readLockStatus[key] = utils.SliceRemove(lm.readLockStatus[key], clientId)
+		lm.readLockStatus.Remove(key, clientId)
 		// update the clientLocks set
-		lm.clientLocksMu.Lock()
-		lm.clientReadLocks[clientId] = utils.SliceRemove(lm.clientReadLocks[clientId], key)
-		lm.clientLocksMu.Unlock()
-		if len(lm.readLockStatus[key]) == 0 {
-			delete(lm.readLockStatus, key)
+		lm.clientsIdLock.Lock(clientId)
+		lm.clientReadLocks.Remove(clientId, key)
+		lm.clientsIdLock.Unlock(clientId)
+
+		if lm.readLockStatus.Empty(key) {
+			lm.readLockStatus.Delete(key)
 		}
-	} else if request.rwflag == WRITE {
-		if !writeOwnedByOtherClient || (writeOwnedByOtherClient && curWriter != clientId) {
-			panicStr, _ := fmt.Printf("server tends to release a write key that client does not own %s by %s\n", key, clientId)
+
+	} else if request.Rwflag == types.WRITE {
+		if !writeOwned || (writeOwned && lm.writeLocksStatus.Get(key) != clientId) {
+			panicStr, _ := fmt.Printf("client [%s] tends to release a write key [%s] he does not own\n", clientId, key)
+			if writeOwned {
+				fmt.Printf("The lock is currently owned by client [%s]\n", lm.writeLocksStatus.Get(key))
+			}
 			panic(panicStr)
 		}
-		delete(lm.writeLocksStatus, key)
-		// update the clientLocks set
-		lm.clientLocksMu.Lock()
-		lm.clientWriteLocks[clientId] = utils.SliceRemove(lm.clientWriteLocks[clientId], key)
-		lm.clientLocksMu.Unlock()
+		lm.writeLocksStatus.Delete(key)
+		// update the clientLocks setx
+		lm.clientsIdLock.Lock(key)
+		lm.clientWriteLocks.Remove(clientId, key)
+		lm.clientsIdLock.Unlock(key)
 	}
 	goodToGoPool = lm.openRequestQueueValve(key)
 	lm.notifyClientsToProceed(goodToGoPool)
-
-	lm.metaMu.Unlock()
 }
 
 func (lm *LockManager) openRequestQueueValve(key string) []string {
-	utils.Nlog("valve begins")
+	utils.Nlog("%s: valve opens", key)
 	// key: the key we're allowing clients to acquire
 	// retVal: goodToGoPool is for new clients that successfully acquire the lock, we need to signal them
 	// nobody's owned the lock
-	// readLockStatusLock locked
-	// writeLocksStatusLock locked
-	// requestQueueMapLock locked
 	goodToGoPool := make([]string, 0)
-	var headRequest LockRequest
+	requestQueueExists := lm.requestsQueueMap.Exists(key)
+	if !requestQueueExists {
+		return goodToGoPool
+	}
 	// first check whether nobody is using the key at all
-	_, readOwnedByOtherClient := lm.readLockStatus[key]
-	_, writeOwnedByOtherClient := lm.writeLocksStatus[key]
+	readOwned := lm.readLockStatus.Exists(key)
+	writeOwned := lm.writeLocksStatus.Exists(key)
 
-	if readOwnedByOtherClient && writeOwnedByOtherClient {
+	if readOwned && writeOwned {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
 		panic(panicStr)
 	}
-	if writeOwnedByOtherClient {
+	if writeOwned {
 		utils.Nlog("write owned by other client")
 		// we cannot let any one in because somebody is holding the exclusive lock
 		return goodToGoPool
 	}
 
 	// rwValve: nobody's holding any rwlock of the key, so we're allowed to make write acquire coming in also
-	rwValve := !readOwnedByOtherClient && !writeOwnedByOtherClient
-	if rwValve && len(lm.requestsQueueMap[key]) > 0 && lm.requestsQueueMap[key][0].rwflag == WRITE {
-		utils.Nlog("letting out write key: [%s]", key)
+	rwValve := !readOwned && !writeOwned
+	if rwValve && !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag == types.WRITE {
 		// only let the next write out
-		headRequest, lm.requestsQueueMap[key] = lm.requestsQueueMap[key][0], lm.requestsQueueMap[key][1:]
+		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the writeLocksStatus
-		lm.writeLocksStatus[key] = headRequest.clientId
+		lm.writeLocksStatus.Set(key, headRequest.ClientId)
 		// update the clientLocks set
-		lm.clientLocksMu.Lock()
-		lm.clientWriteLocks[headRequest.clientId] = append(lm.clientWriteLocks[headRequest.clientId], key)
-		lm.clientLocksMu.Unlock()
+		lm.clientsIdLock.Lock(key)
+		lm.clientWriteLocks.Append(headRequest.ClientId, key)
+		lm.clientsIdLock.Unlock(key)
 		// update goodToGoPool
-		goodToGoPool = append(goodToGoPool, headRequest.clientId)
+		utils.Nlog("letting out write key: [%s] for [%s]", key, headRequest.ClientId)
+		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 		return goodToGoPool
 	}
 	// last possibility:
 	// readOwnedByOtherClient && !writeOwnedByOtherClient
 	// we're letting more readers coming in
-	for len(lm.requestsQueueMap[key]) > 0 && lm.requestsQueueMap[key][0].rwflag != WRITE {
-		utils.Nlog("letting out read key: [%s]", key)
+	for !lm.requestsQueueMap.Empty(key) && lm.requestsQueueMap.Head(key).Rwflag != types.WRITE {
 		// only let the next reads out
-		headRequest, lm.requestsQueueMap[key] = lm.requestsQueueMap[key][0], lm.requestsQueueMap[key][1:]
+		headRequest := lm.requestsQueueMap.PopHead(key)
 		// update the readLockStatus
-		if !utils.SliceContains(lm.readLockStatus[key], headRequest.clientId) {
-			lm.readLockStatus[key] = append(lm.readLockStatus[key], headRequest.clientId)
+		if !lm.readLockStatus.Contains(key, headRequest.ClientId) {
+			lm.readLockStatus.Append(key, headRequest.ClientId)
 			// update the clientLocks set
-			lm.clientLocksMu.Lock()
-			lm.clientReadLocks[headRequest.clientId] = append(lm.clientReadLocks[headRequest.clientId], key)
-			lm.clientLocksMu.Unlock()
+			lm.clientsIdLock.Lock(headRequest.ClientId)
+			lm.clientReadLocks.Append(headRequest.ClientId, key)
+			lm.clientsIdLock.Unlock(headRequest.ClientId)
 		}
 		// update goodToGoPool
-		goodToGoPool = append(goodToGoPool, headRequest.clientId)
+		utils.Nlog("letting out read key: [%s] for [%s]", key, headRequest.ClientId)
+		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 	}
 	return goodToGoPool
 }
