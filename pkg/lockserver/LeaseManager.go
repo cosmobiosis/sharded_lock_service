@@ -25,6 +25,9 @@ type LeaseManager struct {
 }
 
 func (leaseM *LeaseManager) PushDeadlineInfo(deadline int64, clientId string) {
+	if utils.LEASE_MANAGER_DISABLED {
+		return
+	}
 	leaseM.deadlineQueue = append(leaseM.deadlineQueue, &DeadlineInfo{
 		deadline: deadline,
 		clientId: clientId,
@@ -138,6 +141,9 @@ func (leaseM *LeaseManager) ClientLeaseRemove(clientId string, readKeys []string
 }
 
 func (leaseM *LeaseManager) LeaseExtend(clientId string) int64 {
+	if utils.LEASE_MANAGER_DISABLED {
+		return 0
+	}
 	leaseM.clientLocks.Lock(clientId)
 	newExp := time.Now().Unix() + utils.EXPIRATION_SECS
 	leaseM.expirationTimestampSet.Set(clientId, strconv.FormatInt(newExp, 10))
