@@ -22,9 +22,6 @@ type LockManager struct {
 	clientReadLocks  *utils.ConcurrentStringSliceMap
 	clientWriteLocks *utils.ConcurrentStringSliceMap
 
-	clientLeaseMu sync.Mutex
-	clientLease   map[string]int64
-
 	UnimplementedLockServiceServer
 }
 
@@ -40,8 +37,6 @@ func NewLockManager() *LockManager {
 		clientsIdLock:    utils.NewKeysLock(),
 		clientReadLocks:  utils.NewConcurrentStringSliceMap(),
 		clientWriteLocks: utils.NewConcurrentStringSliceMap(),
-
-		clientLease: make(map[string]int64),
 	}
 }
 
@@ -91,8 +86,10 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 	}
 	if request.Rwflag == types.READ {
 		if !readOwned || !lm.readLockStatus.Contains(key, clientId) {
-			panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
-			panic(panicStr)
+			// NOTE: Relax the restriction that a client should not release a lock it does not own
+			// panicStr, _ := fmt.Printf("server tends to release a read key that client does not own %s by %s\n", key, clientId)
+			// panic(panicStr)
+			return
 		}
 		lm.readLockStatus.Remove(key, clientId)
 		// update the clientLocks set
@@ -103,14 +100,15 @@ func (lm *LockManager) processReleaseRequest(request types.LockRequest) {
 		if lm.readLockStatus.Empty(key) {
 			lm.readLockStatus.Delete(key)
 		}
-
 	} else if request.Rwflag == types.WRITE {
 		if !writeOwned || (writeOwned && lm.writeLocksStatus.Get(key) != clientId) {
-			panicStr, _ := fmt.Printf("client [%s] tends to release a write key [%s] he does not own\n", clientId, key)
-			if writeOwned {
-				fmt.Printf("The lock is currently owned by client [%s]\n", lm.writeLocksStatus.Get(key))
-			}
-			panic(panicStr)
+			// NOTE: Relax the restriction that a client should not release a lock it does not own
+			// panicStr, _ := fmt.Printf("client [%s] tends to release a write key [%s] he does not own\n", clientId, key)
+			//if writeOwned {
+			//	fmt.Printf("The lock is currently owned by client [%s]\n", lm.writeLocksStatus.Get(key))
+			//}
+			// panic(panicStr)
+			return
 		}
 		lm.writeLocksStatus.Delete(key)
 		// update the clientLocks setx

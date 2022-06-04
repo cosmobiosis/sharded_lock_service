@@ -10,29 +10,28 @@ import (
 	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sort"
-	"time"
 )
 
 type LockServer struct {
 	// key -> list of array clientIds
 	addr string
 	lm *LockManager
+	leaseM *LeaseManager
 	UnimplementedLockServiceServer
 }
 
 func (ls *LockServer) Acquire(ctx context.Context, locksInfo *AcquireLocksInfo) (*Success, error) {
-	if len(locksInfo.WriteKeys) == 0 && len(locksInfo.ReadKeys) == 0 {
-		ls.lm.clientLeaseMu.Lock()
-		ls.lm.clientLease[locksInfo.ClientId] = time.Now().Unix()
-		ls.lm.clientLeaseMu.Unlock()
-	}
 	clientId := locksInfo.ClientId
+	exp := ls.leaseM.LeaseExtend(clientId)
+	ls.leaseM.PushDeadlineInfo(exp, clientId)
 
 	rwFlagSet := make(map[string]types.RWFlag)
 	for _, key := range locksInfo.ReadKeys {
+		ls.leaseM.clientReadLeases.Append(clientId, key)
 		rwFlagSet[key] = types.READ
 	}
 	for _, key := range locksInfo.WriteKeys {
+		ls.leaseM.clientWriteLeases.Append(clientId, key)
 		rwFlagSet[key] = types.WRITE
 	}
 
@@ -89,6 +88,11 @@ func (ls *LockServer) Release(ctx context.Context, locksInfo *ReleaseLocksInfo) 
 	return &Success{Flag: true}, nil
 }
 
+func (ls *LockServer) Heartbeat(ctx context.Context, info *HeartbeatInfo) (*Success, error) {
+	ls.leaseM.LeaseExtend(info.ClientId)
+	return &Success{Flag: true}, nil
+}
+
 func (ls *LockServer) Ping(ctx context.Context, request *PingRequest) (*Success, error) {
 	return &Success{Flag: true}, nil
 }
@@ -110,6 +114,11 @@ func StartServer(hostAddr string, shutChan chan bool) error {
 	server := grpc.NewServer()
 	lockManager := NewLockManager()
 	lockServer := NewLockServer(hostAddr, lockManager)
+	lockServer.leaseM = NewLeaseManager(lockServer.lm)
+	go func() {
+		lockServer.leaseM.Serve()
+	}()
+
 	RegisterLockServiceServer(server, lockServer)
 
 	go func() {
