@@ -114,6 +114,11 @@ func StartServer(hostAddr string, shutChan chan bool) error {
 	server := grpc.NewServer()
 	lockManager := NewLockManager()
 	lockServer := NewLockServer(hostAddr, lockManager)
+	lockServer.leaseM = NewLeaseManager(lockServer.lm)
+	go func() {
+		lockServer.leaseM.Serve()
+	}()
+
 	RegisterLockServiceServer(server, lockServer)
 
 	go func() {
