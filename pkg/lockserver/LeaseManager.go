@@ -146,6 +146,9 @@ func (leaseM *LeaseManager) LeaseExtend(clientId string) int64 {
 }
 
 func (leaseM *LeaseManager) Serve() {
+	if utils.LEASE_MANAGER_DISABLED {
+		return
+	}
 	for {
 		time.Sleep(time.Duration(utils.LEASE_CHECK_CRON_SECS) * time.Second)
 		leaseM.CleanExpireLocks()
