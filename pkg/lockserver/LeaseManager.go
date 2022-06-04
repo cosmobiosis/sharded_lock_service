@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+type WrappedDeadlineQueue struct {
+	wrappedSlice []*DeadlineInfo
+}
+
 type DeadlineInfo struct {
 	deadline int64
 	clientId string
@@ -21,33 +25,37 @@ type LeaseManager struct {
 	clientWriteLeases *utils.ConcurrentStringSliceMap // client id -> [keys]
 	expirationTimestampSet *utils.ConcurrentStringMap // client id -> key
 
-	deadlineQueue []*DeadlineInfo
+	deadlineQueues []*WrappedDeadlineQueue
 }
 
+func (leaseM *LeaseManager) deadQIndex(cliendId string) int {
+	return int(utils.Hash(cliendId)) % len(leaseM.deadlineQueues)
+}
 func (leaseM *LeaseManager) PushDeadlineInfo(deadline int64, clientId string) {
 	if utils.LEASE_MANAGER_DISABLED {
 		return
 	}
-	leaseM.deadlineQueue = append(leaseM.deadlineQueue, &DeadlineInfo{
+	i := leaseM.deadQIndex(clientId)
+	leaseM.deadlineQueues[i].wrappedSlice = append(leaseM.deadlineQueues[i].wrappedSlice, &DeadlineInfo{
 		deadline: deadline,
 		clientId: clientId,
 	})
 }
 
-func (leaseM *LeaseManager) PopDeadlineInfo() *DeadlineInfo {
-	if len(leaseM.deadlineQueue) == 0 {
+func (leaseM *LeaseManager) PopDeadlineInfo(workerIndex int) *DeadlineInfo {
+	if len(leaseM.deadlineQueues[workerIndex].wrappedSlice) == 0 {
 		return nil
 	}
-	head := leaseM.deadlineQueue[0]
-	leaseM.deadlineQueue = leaseM.deadlineQueue[1:]
+	head := leaseM.deadlineQueues[workerIndex].wrappedSlice[0]
+	leaseM.deadlineQueues[workerIndex].wrappedSlice = leaseM.deadlineQueues[workerIndex].wrappedSlice[1:]
 	return head
 }
 
-func (leaseM *LeaseManager) ShouldCleanUpDeadlineQueue() bool {
-	if len(leaseM.deadlineQueue) == 0 {
+func (leaseM *LeaseManager) ShouldCleanUpDeadlineQueue(workerIndex int) bool {
+	if len(leaseM.deadlineQueues[workerIndex].wrappedSlice) == 0 {
 		return false
 	}
-	deadline := leaseM.deadlineQueue[0].deadline
+	deadline := leaseM.deadlineQueues[workerIndex].wrappedSlice[0].deadline
 	return deadline > time.Now().Unix()
 }
 
@@ -65,13 +73,15 @@ func (leaseM *LeaseManager) setExpireTimestamp(clientId string, value int64) {
 	leaseM.clientLocks.Unlock(clientId)
 }
 
-func (leaseM *LeaseManager) CleanExpireLocks() {
-	for leaseM.ShouldCleanUpDeadlineQueue() {
+func (leaseM *LeaseManager) CleanExpireLocks(workerIndex int) {
+	for leaseM.ShouldCleanUpDeadlineQueue(workerIndex) {
 		// concurrent cleaning
-		clientId := leaseM.PopDeadlineInfo().clientId
+		clientId := leaseM.PopDeadlineInfo(workerIndex).clientId
 		curTime := time.Now().Unix()
-		if leaseM.getExpireTimestamp(clientId) > curTime  {
+		curExp := leaseM.getExpireTimestamp(clientId)
+		if curExp > curTime  {
 			// the deadline info is outdated, lease has been refreshed
+			leaseM.PushDeadlineInfo(curExp, clientId)
 			continue
 		}
 		leaseM.setExpireTimestamp(clientId, math.MaxInt64)
@@ -155,18 +165,29 @@ func (leaseM *LeaseManager) Serve() {
 	if utils.LEASE_MANAGER_DISABLED {
 		return
 	}
-	for {
-		time.Sleep(time.Duration(utils.LEASE_CHECK_CRON_SECS) * time.Second)
-		leaseM.CleanExpireLocks()
+	for i := 0; i < utils.DEADLINE_QUEUE_NUM; i++ {
+		go func(workerIndex int) {
+			for {
+				time.Sleep(time.Duration(utils.LEASE_CHECK_CRON_SECS) * time.Second)
+				leaseM.CleanExpireLocks(workerIndex)
+			}
+		}(i)
 	}
 }
 
 func NewLeaseManager(lm *LockManager) *LeaseManager {
-	return &LeaseManager{
+	leaseM := &LeaseManager{
 		lm: lm,
 		clientLocks: utils.NewKeysLock(),
 		clientReadLeases: utils.NewConcurrentStringSliceMap(),
 		clientWriteLeases: utils.NewConcurrentStringSliceMap(),
 		expirationTimestampSet: utils.NewConcurrentStringMap(),
+		deadlineQueues: make([]*WrappedDeadlineQueue, utils.DEADLINE_QUEUE_NUM),
 	}
+	for i := 0; i < utils.DEADLINE_QUEUE_NUM ; i++ {
+		leaseM.deadlineQueues[i] = &WrappedDeadlineQueue{
+			wrappedSlice: make([]*DeadlineInfo, 0),
+		}
+	}
+	return leaseM
 }
