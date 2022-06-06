@@ -14,5 +14,10 @@ Please first download our Tribbler 2.0 and use the git branch final_proj
 >go run cmd/LockServerExec/main.go
 
 ### Run Tribber 2.0 Test
-After setting up lock servers, in Tribbler repo run the following command
-> cargo test --package lab --test lab3_test -- test_bin_storage --exact --nocapture
+After setting up lock servers, in Tribbler repo run the following command.
+
+This is the command to run performance stress test with backend node failure like in lab3
+> cargo test --package lab --test final_project_test_and_evaluation -- test_bin_storage_failure --exact --nocapture
+
+This is the command to run performance stress test with no backend node failure
+> cargo test --package lab --test final_project_test_and_evaluation -- test_bin_storage_no_failure --exact --nocapture
