@@ -3,7 +3,6 @@ package lockserver
 import (
 	context "context"
 	"errors"
-	"fmt"
 	"google.golang.org/grpc"
 	"log"
 	"net"
@@ -126,7 +125,7 @@ func StartServer(hostAddr string, shutChan chan bool) error {
 		server.Stop()
 	}()
 
-	fmt.Println("Setting up server", hostAddr)
+	// fmt.Println("Setting up server", hostAddr)
 	if errServe := server.Serve(lis); errServe != nil {
 		return errors.New("fail to serve")
 	}

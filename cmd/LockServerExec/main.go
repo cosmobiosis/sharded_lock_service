@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"sharded_lock_service/pkg/lockserver"
 	"strconv"
 
@@ -32,6 +33,7 @@ func main() {
 			}
 		}()
 	}
+	fmt.Println("Servers set up completed")
 	<- setupErrDetected
 	panic("Lock Servers Set Up Error Detected")
 }
