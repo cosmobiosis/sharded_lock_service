@@ -63,17 +63,19 @@ func TestServerShardPerformance(t *testing.T) {
 	fmt.Println(gap)
 }
 
-func TestTxnPerformance(t *testing.T) {
-	config := TestTxnsConfig{
-		numServers:    1,
-		readLatency:   100,
-		writeLatency:  100,
-		keyLength:     10,
-		numTxn:        10,
-		numKeysInPool: 500,
-		readPerTxn:    50,
-		writePerTxn:   50,
+func TestTxnServerIncrease(t *testing.T) {
+	for numServers := 1; numServers <= 30; numServers ++ {
+		config := TestTxnsConfig {
+			numServers:    numServers,
+			readLatency:   0,
+			writeLatency:  0,
+			keyLength:     10,
+			numTxn:        20,
+			numKeysInPool: 1000,
+			readPerTxn:    50,
+			writePerTxn:   0,
+		}
+		timeGap := chaoticTest(config)
+		fmt.Println(timeGap)
 	}
-	gap := chaoticTest(config)
-	fmt.Println(gap)
 }
