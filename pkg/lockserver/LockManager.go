@@ -57,10 +57,10 @@ func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper
 	readOwned := lm.readLockStatus.Exists(key)
 	writeOwned := lm.writeLocksStatus.Exists(key)
 	if readOwned {
-		utils.Nlog("read %s owned by other client", key)
+		utils.Slog("read %s owned by other client", key)
 	}
 	if writeOwned {
-		utils.Nlog("write %s owned by other client", key)
+		utils.Slog("write %s owned by other client", key)
 	}
 
 	if readOwned && writeOwned {

@@ -12,6 +12,12 @@ func Nlog(format string, args ...interface{}) {
 	}
 }
 
+func Slog(format string, args ...interface{}) {
+	if SPECIAL_DEBUG {
+		log.Printf(format, args...)
+	}
+}
+
 func Dlog(id string, format string, args ...interface{}) {
 	if DEBUG {
 		format = fmt.Sprintf("[%d] ", id) + format
