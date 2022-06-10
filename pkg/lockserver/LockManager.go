@@ -176,11 +176,11 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 			lm.clientReadLocks.Append(headRequest.ClientId, key)
 			lm.clientsIdLock.Unlock(headRequest.ClientId)
 		}
-		time.Sleep(100 * time.Millisecond)
 		// update goodToGoPool
 		utils.Nlog("letting out read key: [%s] for [%s]", key, headRequest.ClientId)
 		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 	}
+	time.Sleep(100 * time.Millisecond)
 	return goodToGoPool
 }
 
