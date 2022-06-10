@@ -5,6 +5,7 @@ import (
 	"sharded_lock_service/pkg/types"
 	"sharded_lock_service/pkg/utils"
 	"sync"
+	"time"
 )
 
 type LockManager struct {
@@ -156,6 +157,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		lm.clientWriteLocks.Append(headRequest.ClientId, key)
 		lm.clientsIdLock.Unlock(key)
 		// update goodToGoPool
+		time.Sleep(100 * time.Millisecond)
 		utils.Nlog("letting out write key: [%s] for [%s]", key, headRequest.ClientId)
 		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
 		return goodToGoPool
@@ -174,6 +176,7 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 			lm.clientReadLocks.Append(headRequest.ClientId, key)
 			lm.clientsIdLock.Unlock(headRequest.ClientId)
 		}
+		time.Sleep(100 * time.Millisecond)
 		// update goodToGoPool
 		utils.Nlog("letting out read key: [%s] for [%s]", key, headRequest.ClientId)
 		goodToGoPool = append(goodToGoPool, headRequest.ClientId)
