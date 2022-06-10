@@ -56,6 +56,12 @@ func (lm *LockManager) processAcquireRequest(request types.LockRequest, isKeeper
 	}
 	readOwned := lm.readLockStatus.Exists(key)
 	writeOwned := lm.writeLocksStatus.Exists(key)
+	if readOwned {
+		utils.Nlog("read %s owned by other client", key)
+	}
+	if writeOwned {
+		utils.Nlog("write %s owned by other client", key)
+	}
 
 	if readOwned && writeOwned {
 		panicStr, _ := fmt.Printf("server has both read and write at one time for key %s\n", key)
@@ -139,7 +145,6 @@ func (lm *LockManager) openRequestQueueValve(key string) []string {
 		panic(panicStr)
 	}
 	if writeOwned {
-		utils.Nlog("write owned by other client")
 		// we cannot let any one in because somebody is holding the exclusive lock
 		return goodToGoPool
 	}

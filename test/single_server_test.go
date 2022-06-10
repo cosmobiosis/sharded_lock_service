@@ -36,7 +36,7 @@ func TestDoubleReadAcquires(t *testing.T) {
 	check(err)
 	c1 := lockserver.NewLockServiceClient(conn)
 	c2 := lockserver.NewLockServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	resp1, err := c1.Acquire(ctx, &lockserver.AcquireLocksInfo{
 		ClientId:  "a",
@@ -47,6 +47,7 @@ func TestDoubleReadAcquires(t *testing.T) {
 	resp2, err := c2.Acquire(ctx, &lockserver.AcquireLocksInfo{
 		ClientId: "b",
 		ReadKeys: []string{"rkey1", "rkey2"},
+		WriteKeys: []string{"wkey3"},
 	})
 	check(err)
 	testingInfo.ShutdownChannels[0] <- true

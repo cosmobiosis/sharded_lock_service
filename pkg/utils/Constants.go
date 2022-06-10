@@ -1,7 +1,7 @@
 package utils
 
-const TEST_LOG = false
-const DEBUG = false
+const TEST_LOG = true
+const DEBUG = true
 const DEBUG_WITH_SERVER_ID = false
 const LEASE_MANAGER_DISABLED = true
 const EXPIRATION_SECS int64 = 5
